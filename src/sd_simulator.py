@@ -32,6 +32,7 @@ class SD_Simulator:
         X: bool = True,
         Y: bool = True,
         Z: bool = True,
+        gamma: float = 1.4,
         use_cupy: bool = True,
     ):
         self.init_fct = init_fct
@@ -47,6 +48,7 @@ class SD_Simulator:
         self.X = X
         self.Y = Y
         self.Z = Z
+        self.gamma=gamma
 
         self.dm = GPUDataManager(use_cupy)
         
@@ -134,6 +136,22 @@ class SD_Simulator:
 
         self.post_init()
 
+    def post_init(self) -> None:
+        na = np.newaxis
+        nvar = self.nvar
+        ngh = self.Nghe
+        X = self.X
+        Y = self.Y
+        Z = self.Z
+        # This arrays contain Nghe layers of ghost elements
+        W_gh = self.array_sp(ngh=ngh)
+        for var in range(nvar):
+            W_gh[var] = quadrature_mean(self.mesh_cv, self.init_fct, self.dimension, var)
+
+        self.W_init_cv = self.crop(W_gh)
+        self.dm.W_cv = self.W_init_cv.copy()
+        self.dm.W_sp = self.compute_sp_from_cv(self.dm.W_cv)
+
     def domain_size(self):
         Nx = self.Nx*(self.nx)
         Ny = self.Ny*(self.ny)
@@ -185,23 +203,6 @@ class SD_Simulator:
             (1,p+1+("y" in dims)) [self.Y],
             (1,p+1+("z" in dims)) [self.Z],
             **kwargs)
-
-    def post_init(self) -> None:
-        na = np.newaxis
-        nvar = self.nvar
-        ngh = self.Nghe
-        X = self.X
-        Y = self.Y
-        Z = self.Z
-        # This arrays contain Nghe layers of ghost elements
-        W_gh = self.array_sp(ngh=ngh)
-        for var in range(nvar):
-            W_gh[var] = quadrature_mean(self.mesh_cv, self.init_fct, self.dimension, var)
-
-        self.W_init_cv = self.crop(W_gh)
-        self.dm.W_cv = self.W_init_cv.copy()
-        self.dm.W_sp = self.compute_sp_from_cv(self.dm.W_cv)
-
 
     def crop_x(self,M)->np.ndarray:
         ngh = self.Nghe
@@ -266,6 +267,66 @@ class SD_Simulator:
     
     def compute_fp_from_sp(self,M_sp,dim) -> np.ndarray:
         return self.compute_A_from_B(self,M_sp,self.sp_to_fp,dim)
+    
+    def compute_primitives(self,U)->np.ndarray:
+        W = U.copy()
+        K = np.zeros(W[0].shape)
+        if self.X:
+            W[self._vx_] = U[self._vx_]/U[0]
+            K += W[self._vx_]**2
+        if self.Y:
+            W[self._vy_] = U[self._vy_]/U[0]
+            K += W[self._vy_]**2
+        if self.Z:
+            W[self._vz_] = U[self._vz_]/U[0]
+            K += W[self._zy_]**2
+        K  *= 0.5*U[0]
+        W[self._s_] = U[self._s_]/U[0]
+        W[self._p_] = (self.gamma-1)*(U[self._p_]-K)
+        return W
+                
+    def compute_conservatives(self,W)->np.ndarray:
+        U = W.copy()
+        K = np.zeros(W[0].shape)
+        if self.X:
+            U[self._vx_] = W[self._vx_]*U[0]
+            K += W[self._vx_]**2
+        if self.Y:
+            U[self._vy_] = W[self._vy_]*U[0]
+            K += W[self._vy_]**2
+        if self.Z:
+            U[self._vz_] = W[self._vz_]*U[0]
+            K += W[self._zy_]**2
+        K  *= 0.5*U[0]
+        U[self._p_] = W[self._p_]/(self.gamma-1)+K
+        return U
+    
+    def compute_fluxes(self,F,M,v_1,v_2,v_3,prims)->np.ndarray:
+        _p_ = self._p_
+        _s_ = self._s_
+        if prims:
+            W = M
+        else:
+            W = self.compute_primitives(M)
+
+        m_1 = W[0]*W[v_1]
+        K = m_1*W[v_1]
+        if self.dimension>=2:
+            m_2 = W[0]*W[v_2]
+            K += m_2*W[v_2]
+        if self.dimension==3:
+            m_3 = W[0]*W[v_3]
+            K += m_3*W[v_3]
+
+        K *= 0.5
+        E   = W[_p_]/(self.gamma-1) + K
+        F[0  ,...] = m_1
+        F[v_1,...] = m_1*W[v_1] + W[_p_]
+        if self.dimension>=2:
+            F[v_2,...] = m_2*W[v_1] 
+        if self.dimension==3:
+            F[v_3,...] = m_3*W[v_1]
+        F[_p_,...] = W[v_1]*(E + W[_p_])
     
 
                     
