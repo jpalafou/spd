@@ -15,6 +15,8 @@ from polynomials import intfromsol_matrix
 from polynomials import ader_matrix
 from polynomials import quadrature_mean
 from initial_conditions_3d import sine_wave
+import sd_ader
+import hydro
 
 class SD_Simulator:
     def __init__(
@@ -234,14 +236,14 @@ class SD_Simulator:
         #   z,y,x: cells
         #   i,j,k: B pts
         #   l,m,n: A pts
-        if dim=="x":
+        if dim=="x" and self.X:
             A = np.einsum("fs,uzyxijs->uxyzlmf", A_to_B, B)
-        elif dim=="y":
+        elif dim=="y" and self.Y:
             A = np.einsum("fs,uzyxisk->uxyzlfn", A_to_B, B)
-        elif dim=="z":
+        elif dim=="z" and self.Z:
             A = np.einsum("fs,uzyxsjk->uxyzfmn", A_to_B, B)
         else:
-            print("Wrong option for dim")
+            raise("Wrong option for dim")
         return A
     
     def compute_A_from_B_3d(self,B,A_to_B) -> np.ndarray:
@@ -259,7 +261,7 @@ class SD_Simulator:
     def compute_sp_from_cv(self,M_cv)->np.ndarray:
         return self.compute_A_from_B_3d(M_cv,self.dm.cv_to_sp)
         
-    def compute_sp_from_cv(self,M_sp)->np.ndarray:
+    def compute_cv_from_sp(self,M_sp)->np.ndarray:
         return self.compute_A_from_B_3d(M_sp,self.dm.sp_to_cv)
     
     def compute_sp_from_fp(self,M_fp,dim) -> np.ndarray:
@@ -267,6 +269,27 @@ class SD_Simulator:
     
     def compute_fp_from_sp(self,M_sp,dim) -> np.ndarray:
         return self.compute_A_from_B(self,M_sp,self.sp_to_fp,dim)
+    
+    def compute_sp_from_dfp(self,M_fp,dim) -> np.ndarray:
+        return self.compute_A_from_B(self,M_fp,self.dfp_to_sp,dim)
+    
+    def compute_sp_from_dfp_x(self):
+        if self.X:
+            return self.compute_sp_from_dfp(self.dm.F_ader_fp_x,self.dm.dfp_to_sp,"x")/self.dx
+        else:
+            return 0
+        
+    def compute_sp_from_dfp_y(self):
+        if self.Y:
+            return self.compute_sp_from_dfp(self.dm.F_ader_fp_y,self.dm.dfp_to_sp,"y")/self.dy
+        else:
+            return 0
+        
+    def compute_sp_from_dfp_z(self):
+        if self.Z:
+            return self.compute_sp_from_dfp(self.dm.F_ader_fp_z,self.dm.dfp_to_sp,"z")/self.dz
+        else:
+            return 0
     
     def compute_primitives(self,U)->np.ndarray:
         W = U.copy()
@@ -327,7 +350,26 @@ class SD_Simulator:
         if self.dimension==3:
             F[v_3,...] = m_3*W[v_1]
         F[_p_,...] = W[v_1]*(E + W[_p_])
+
+    def perform_update(self) -> bool:
+        self.n_step += 1
+        na = self.dm.xp.newaxis
+        
+        sd_ader.ader_predictor(self)
+        sd_ader.ader_update(self)
+       
+        self.time += self.dm.dt
+        return True
     
+    def perform_iterations(self, n_step: int) -> None:
+        self.dm.switch_to(CupyLocation.device)
+        for i in range(n_step):
+            hydro.compute_dt(self)
+            self.perform_update()
+        self.dm.switch_to(CupyLocation.host)
+        self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp)
+        self.dm.W_cv[...] = self.compute_primitives(self.dm.U_cv)
+     
 
                     
 
