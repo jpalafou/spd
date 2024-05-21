@@ -1,7 +1,6 @@
 import numpy as np
-from sd_simulator import SD_Simulator
 
-def ader_predictor(self: SD_Simulator,prims=False) -> None:
+def ader_predictor(self: "SD_Simulator",prims=False) -> None:
     na = self.dm.xp.newaxis
     # W -> primivite variables
     # U -> conservative variables
@@ -48,7 +47,7 @@ def ader_predictor(self: SD_Simulator,prims=False) -> None:
             self.dm.U_ader_sp[...] = self.dm.U_sp[:,na] - self.dm.U_ader_sp
                     
         
-def ader_update(self: SD_Simulator):
+def ader_update(self: "SD_Simulator"):
     na = self.dm.xp.newaxis
     # dUdt = (dFxdx +dFydy + S)dt 
     dUdt = (np.einsum("t,utbcrs->ubcrs",self.dm.w_tp,
@@ -62,7 +61,7 @@ def ader_update(self: SD_Simulator):
     # Compute primitive variables at solution points from updated solution    
     self.dm.W_sp =  self.compute_primitives(self.dm.U_sp)
 
-def solve_faces(self: SD_Simulator, M, ader_iter, prims=False)->None:
+def solve_faces(self: "SD_Simulator", M, ader_iter, prims=False)->None:
     na=np.newaxis
     # Interpolate M(U or W) to flux points
     # Then compute fluxes at flux points

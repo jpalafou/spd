@@ -35,6 +35,8 @@ class SD_Simulator:
         Y: bool = True,
         Z: bool = True,
         gamma: float = 1.4,
+        cfl_coeff: float = 0.8,
+        min_c2: float = 1E-10,
         use_cupy: bool = True,
     ):
         self.init_fct = init_fct
@@ -51,6 +53,8 @@ class SD_Simulator:
         self.Y = Y
         self.Z = Z
         self.gamma=gamma
+        self.cfl_coeff = cfl_coeff
+        self.min_c2 = min_c2
 
         self.dm = GPUDataManager(use_cupy)
         
@@ -137,6 +141,8 @@ class SD_Simulator:
         self.dm.Z_sp = Z_sp.reshape(self.Nz,(1,p+1) [Z])
 
         self.post_init()
+        hydro.compute_dt(self)
+        print(f"dt = {self.dm.dt}")
 
     def post_init(self) -> None:
         na = np.newaxis
