@@ -166,9 +166,9 @@ class SD_Simulator:
             self.Nz+2*ngh*self.Z,
             self.Ny+2*ngh*self.Y,
             self.Nx+2*ngh*self.X,
-            px,
+            pz,
             py,
-            pz))
+            px))
         
     def array_sp(self,**kwargs):
         p=self.p
@@ -199,30 +199,75 @@ class SD_Simulator:
             W_gh[var] = quadrature_mean(self.mesh_cv, self.init_fct, self.dimension, var)
 
         self.W_init_cv = self.crop(W_gh)
+        self.dm.W_cv = self.W_init_cv.copy()
+        self.dm.W_sp = self.compute_sp_from_cv(self.dm.W_cv)
 
-    def crop_x(self,M):
+
+    def crop_x(self,M)->np.ndarray:
         ngh = self.Nghe
         if self.X:
             return M[:,:,:,ngh:-ngh,...]
         else:
             return M
         
-    def crop_y(self,M):
+    def crop_y(self,M)->np.ndarray:
         ngh = self.Nghe
         if self.X:
             return M[:,:,ngh:-ngh,...]
         else:
             return M
         
-    def crop_z(self,M):
+    def crop_z(self,M)->np.ndarray:
         ngh = self.Nghe
         if self.Z:
             return M[:,ngh:-ngh,...]
         else:
             return M
 
-    def crop(self,M):
+    def crop(self,M)->np.ndarray:
         return(self.crop_z(self.crop_y(self.crop_x(M))))
+    
+    def compute_A_from_B(self,B,A_to_B,dim) -> np.ndarray:
+        # Axes labels:
+        #   u: Conservative variables
+        #   z,y,x: cells
+        #   i,j,k: B pts
+        #   l,m,n: A pts
+        if dim=="x":
+            A = np.einsum("fs,uzyxijs->uxyzlmf", A_to_B, B)
+        elif dim=="y":
+            A = np.einsum("fs,uzyxisk->uxyzlfn", A_to_B, B)
+        elif dim=="z":
+            A = np.einsum("fs,uzyxsjk->uxyzfmn", A_to_B, B)
+        else:
+            print("Wrong option for dim")
+        return A
+    
+    def compute_A_from_B_3d(self,B,A_to_B) -> np.ndarray:
+       # Axes labels:
+        #   u: Conservative variables
+        #   z,y,x: cells
+        #   i,j,k: A
+        #   l,m,n: B
+        A = np.einsum("il,jm,kn,uxyzlmn->uzyxijk",
+                         (np.ones((1,1)),A_to_B) [self.Z],
+                         (np.ones((1,1)),A_to_B) [self.Y],
+                         (np.ones((1,1)),A_to_B) [self.X], B)
+        return B
+    
+    def compute_sp_from_cv(self,M_cv)->np.ndarray:
+        return self.compute_A_from_B_3d(M_cv,self.dm.cv_to_sp)
+        
+    def compute_sp_from_cv(self,M_sp)->np.ndarray:
+        return self.compute_A_from_B_3d(M_sp,self.dm.sp_to_cv)
+    
+    def compute_sp_from_fp(self,M_fp,dim) -> np.ndarray:
+        return self.compute_A_from_B(self,M_fp,self.fp_to_sp,dim)
+    
+    def compute_fp_from_sp(self,M_sp,dim) -> np.ndarray:
+        return self.compute_A_from_B(self,M_sp,self.sp_to_fp,dim)
+    
+
                     
 
         
