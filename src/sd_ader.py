@@ -65,17 +65,16 @@ def solve_faces(self: "SD_Simulator", M, ader_iter, prims=False)->None:
     na=np.newaxis
     # Interpolate M(U or W) to flux points
     # Then compute fluxes at flux points
-    if self.X:
-        self.dm.M_ader_fp_x[...] = self.compute_fp_from_sp(M,0)
-        v2,v3 = ((self._vz_,self._vy_),(self._vy_,self._vz_)) [self.Y]
-        self.compute_fluxes(self.dm.F_ader_fp_x, self.dm.M_ader_fp_x,self._vx_,v2,v3,prims)
+    vx = self._vx_
+    vy = self._vy_
+    vz = self._vz_
+    self.dm.M_ader_fp_x[...] = self.compute_fp_from_sp(M,0)
+    self.compute_fluxes(self.dm.F_ader_fp_x, self.dm.M_ader_fp_x,vx,vy,vz,prims)
     if self.Y:
         self.dm.M_ader_fp_y[...] = self.compute_fp_from_sp(M,1)
-        v2,v3 = ((self._vx_,self._vz_),(self._vz_,self._vx_)) [self.Z]
-        self.compute_fluxes(self.dm.F_ader_fp_y, self.dm.M_ader_fp_y,self._vy_,v2,v3,prims)
+        v1,v2 = ((vz,vx),(vx,vz)) [self.Z]
+        self.compute_fluxes(self.dm.F_ader_fp_y, self.dm.M_ader_fp_y,vy,v1,v2,prims)
     if self.Z:
         self.dm.M_ader_fp_z[...] = self.compute_fp_from_sp(M,2)
-        v2,v3 = ((self._vy_,self._vx_),(self._vx_,self._vy_)) [self.X]
-        self.compute_fluxes(self.dm.F_ader_fp_z, self.dm.M_ader_fp_z,self._vz_,v2,v3,prims)
-            
+        self.compute_fluxes(self.dm.F_ader_fp_z, self.dm.M_ader_fp_z,vz,vx,vy,prims)
     return

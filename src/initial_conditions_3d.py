@@ -1,6 +1,12 @@
 import numpy as np
+import initial_conditions_1d as ic1d
+import initial_conditions_2d as ic2d
 
 def step_function(xyz: np.ndarray,case: int, vx=1, vy=1, vz=1):
+    if xyz.shape[0]==1:
+        return ic1d.step_function(xyz,case,vx=vx)
+    if xyz.shape[0]==2:
+        return ic2d.step_function(xyz,case,vx=vx,vy=vy)
     x=xyz[0]
     y=xyz[1]
     z=xyz[2]
