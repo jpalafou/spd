@@ -1,5 +1,4 @@
-from typing import Callable
-from typing import Tuple
+from typing import Callable,Tuple,Union
 import sys
 import numpy as np
 import cupy as cp
@@ -212,31 +211,23 @@ class SD_Simulator:
             assert M.ndim == 7
             return np.transpose(M,(0,1,4,2,5,3,6)).reshape(M.shape[0],M.shape[1]*M.shape[4],M.shape[2]*M.shape[5],M.shape[3]*M.shape[6])   
 
-    def array1d(self,px,ngh=0) -> np.ndarray:
-        return np.ndarray((
-            self.nvar,
-            self.Nx+2*ngh,
-            px))
+    def array1d(self,px,ngh=0,ader=False) -> np.ndarray:
+        shape = [self.nvar,self.nader] if ader else [self.nvar]
+        shape += [self.Nx+2*ngh,px]
+        
     
-    def array2d(self,px,py,ngh=0)-> np.ndarray:
-        return np.ndarray((
-            self.nvar,
-            self.Ny+2*ngh,
-            self.Nx+2*ngh,
-            py,
-            px))
+    def array2d(self,px,py,ngh=0,ader=False)-> np.ndarray:
+        shape = [self.nvar,self.nader] if ader else [self.nvar]
+        shape += [self.Ny+2*ngh,self.Nx+2*ngh,py,px]
+        return np.ndarray(shape)
 
-    def array3d(self,px,py,pz,ngh=0) -> np.ndarray:
-        return np.ndarray((
-            self.nvar,
-            self.Nz+2*ngh,
-            self.Ny+2*ngh,
-            self.Nx+2*ngh,
-            pz,
-            py,
-            px))
+    def array3d(self,px,py,pz,ngh=0,ader=False)-> np.ndarray:
+        shape = [self.nvar,self.nader] if ader else [self.nvar]
+        shape += [self.Nz+2*ngh,self.Ny+2*ngh,self.Nx+2*ngh,
+                  pz,py,px]
+        return np.ndarray(shape)
     
-    def array(self,px,py,pz,**kwargs) -> np.ndarray:
+    def array(self,px,py,pz,ader=False,**kwargs) -> np.ndarray:
         if self.ndim==1:
             return self.array1d(px,**kwargs)
         if self.ndim==2:
@@ -323,7 +314,7 @@ class SD_Simulator:
                          A_to_B, B)
         return A
     
-    def compute_sp_from_cv(self,M_cv)->np.ndarray:
+    def compute_sp_from_cv(self,M_cv)->Union[np.ndarray,cp.ndarray]:
         return self.compute_A_from_B_full(M_cv,self.dm.cv_to_sp)
         
     def compute_cv_from_sp(self,M_sp)->np.ndarray:
@@ -398,9 +389,8 @@ class SD_Simulator:
         if self.ndim==3:
             m_3 = W[0]*W[v_3]
             K += m_3*W[v_3]
-
-        K *= 0.5
-        E   = W[_p_]/(self.gamma-1) + K
+            
+        E   = W[_p_]/(self.gamma-1) + 0.5*K
         F[0  ,...] = m_1
         F[v_1,...] = m_1*W[v_1] + W[_p_]
         if self.ndim>=2:
