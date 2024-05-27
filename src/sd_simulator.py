@@ -2,6 +2,7 @@ from typing import Callable,Tuple,Union
 import sys
 import numpy as np
 import cupy as cp
+from collections import defaultdict
 
 from data_management import CupyLocation
 from data_management import GPUDataManager
@@ -35,6 +36,7 @@ class SD_Simulator:
         cfl_coeff: float = 0.8,
         min_c2: float = 1E-10,
         use_cupy: bool = True,
+        BC: Tuple = ("periodic","periodic","periodic")
     ):
         self.init_fct = init_fct
         if m==-1:
@@ -53,6 +55,16 @@ class SD_Simulator:
         self.gamma=gamma
         self.cfl_coeff = cfl_coeff
         self.min_c2 = min_c2
+
+        assert len(BC) >= ndim
+        self.BC = defaultdict(list)
+        self.dims = defaultdict(list) 
+        dims = ["x","y","z"]
+        for dim in range(ndim):
+            self.dims[dim] = dims[dim]
+            self.BC[dims[dim]] = BC[0]  
+        print(self.dims)   
+        print(self.BC)       
 
         self.dm = GPUDataManager(use_cupy)
         
@@ -167,6 +179,9 @@ class SD_Simulator:
         self.W_init_cv = self.crop(W_gh)
         self.dm.W_cv = self.W_init_cv.copy()
         self.dm.W_sp = self.compute_sp_from_cv(self.dm.W_cv)
+        self.dm.U_sp = self.compute_conservatives(self.dm.W_sp)
+        self.dm.U_cv = self.compute_conservatives(self.dm.W_cv)
+        sd_ader.ader_arrays(self)
 
     def domain_size(self):
         Nx = self.Nx*(self.nx)
@@ -251,13 +266,34 @@ class SD_Simulator:
             (p+1+("z" in dims)),
             **kwargs)
     
-    def array_RS(self,dim="x",ader=0)->np.ndarray:
+    def array_RS(self,dim="x",ader=False)->np.ndarray:
         shape = [self.nvar,self.nader] if ader else [self.nvar]
         if self.Z:
             shape += [self.Nz+(dim=="z")]
         if self.Y:
             shape += [self.Ny+(dim=="y")]
-        shape += [self.Nx+(dim=="x"),self.p+1]
+        shape += [self.Nx+(dim=="x")]
+        if self.Z:    
+            shape += [self.p+1]
+        if self.Y:
+            shape += [self.p+1]
+        return np.ndarray(shape)
+    
+    def array_BC(self,dim="x",ader=False)->np.ndarray:
+        shape = [2,self.nvar,self.nader] if ader else [2,self.nvar]
+        if self.Z:
+            if dim=="x" or dim=="y":
+                shape += [self.Nz]
+        if self.Y:
+            if dim=="x" or dim=="z":
+                shape += [self.Ny]
+        if dim=="y" or dim=="z":
+            shape += [self.Nx]
+
+        if self.Z:    
+            shape += [self.p+1]
+        if self.Y:
+            shape += [self.p+1]
         return np.ndarray(shape)
 
     def crop_1d(self,M)->np.ndarray:
@@ -280,7 +316,7 @@ class SD_Simulator:
         if self.ndim==1:
             return self.crop_1d(M)
     
-    def compute_A_from_B(self,B,A_to_B,dim) -> np.ndarray:
+    def compute_A_from_B(self,B,A_to_B,dim,ader=False) -> np.ndarray:
         # Axes labels:
         #   u: Conservative variables
         #   z,y,x: cells
@@ -290,15 +326,15 @@ class SD_Simulator:
         j = ("","j") [self.Y]
         z = ("","z") [self.Z]
         k = ("","k") [self.Z]
-
+        t = ("","t") [ader]
         if dim=="x":
-            u = f"u{z}{y}x{k}{j}"
+            u = f"u{t}{z}{y}x{k}{j}"
             A = np.einsum(f"fs,{u}s->{u}f",A_to_B, B)
         elif dim=="y" and self.Y:
-            u = f"u{z}{y}x{k}"
+            u = f"u{t}{z}{y}x{k}"
             A = np.einsum(f"fs,{u}si->{u}fi", A_to_B, B)
         elif dim=="z" and self.Z:
-            A = np.einsum("fs,uzyxsji->uzyxfji", A_to_B, B)
+            A = np.einsum(f"fs,u{t}zyxsji->u{t}zyxfji", A_to_B, B)
         else:
             raise("Wrong option for dim")
         return A
@@ -329,27 +365,27 @@ class SD_Simulator:
     def compute_cv_from_sp(self,M_sp)->np.ndarray:
         return self.compute_A_from_B_full(M_sp,self.dm.sp_to_cv)
     
-    def compute_sp_from_fp(self,M_fp,dim) -> np.ndarray:
-        return self.compute_A_from_B(self,M_fp,self.fp_to_sp,dim)
+    def compute_sp_from_fp(self,M_fp,dim,**kwargs) -> np.ndarray:
+        return self.compute_A_from_B(M_fp,self.dm.fp_to_sp,dim,**kwargs)
     
-    def compute_fp_from_sp(self,M_sp,dim) -> np.ndarray:
-        return self.compute_A_from_B(self,M_sp,self.sp_to_fp,dim)
+    def compute_fp_from_sp(self,M_sp,dim,**kwargs) -> np.ndarray:
+        return self.compute_A_from_B(M_sp,self.dm.sp_to_fp,dim,**kwargs)
     
-    def compute_sp_from_dfp(self,M_fp,dim) -> np.ndarray:
-        return self.compute_A_from_B(self,M_fp,self.dfp_to_sp,dim)
+    def compute_sp_from_dfp(self,M_fp,dim,**kwargs) -> np.ndarray:
+        return self.compute_A_from_B(M_fp,self.dm.dfp_to_sp,dim,**kwargs)
     
-    def compute_sp_from_dfp_x(self):
-        return self.compute_sp_from_dfp(self.dm.F_ader_fp_x,self.dm.dfp_to_sp,"x")/self.dx
+    def compute_sp_from_dfp_x(self,ader=True):
+        return self.compute_sp_from_dfp(self.dm.F_ader_fp_x,"x",ader=ader)/self.dx
         
-    def compute_sp_from_dfp_y(self):
+    def compute_sp_from_dfp_y(self,ader=True):
         if self.Y:
-            return self.compute_sp_from_dfp(self.dm.F_ader_fp_y,self.dm.dfp_to_sp,"y")/self.dy
+            return self.compute_sp_from_dfp(self.dm.F_ader_fp_y,"y",ader=ader)/self.dy
         else:
             return 0
         
-    def compute_sp_from_dfp_z(self):
+    def compute_sp_from_dfp_z(self,ader=True):
         if self.Z:
-            return self.compute_sp_from_dfp(self.dm.F_ader_fp_z,self.dm.dfp_to_sp,"z")/self.dz
+            return self.compute_sp_from_dfp(self.dm.F_ader_fp_z,"z",ader=ader)/self.dz
         else:
             return 0
     
@@ -362,9 +398,8 @@ class SD_Simulator:
             K += W[self._vy_]**2
         if self.Z:
             W[self._vz_] = U[self._vz_]/U[0]
-            K += W[self._zy_]**2
+            K += W[self._vz_]**2
         K  *= 0.5*U[0]
-        W[self._s_] = U[self._s_]/U[0]
         W[self._p_] = (self.gamma-1)*(U[self._p_]-K)
         return W
                 
@@ -377,14 +412,13 @@ class SD_Simulator:
             K += W[self._vy_]**2
         if self.Z:
             U[self._vz_] = W[self._vz_]*U[0]
-            K += W[self._zy_]**2
+            K += W[self._vz_]**2
         K  *= 0.5*U[0]
         U[self._p_] = W[self._p_]/(self.gamma-1)+K
         return U
     
     def compute_fluxes(self,F,M,v_1,v_2,v_3,prims)->np.ndarray:
         _p_ = self._p_
-        _s_ = self._s_
         if prims:
             W = M
         else:

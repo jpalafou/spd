@@ -1,5 +1,14 @@
 import numpy as np
+import sd_boundary as bc
 
+def ader_string(dim):
+    if dim==3:
+        return "zyxkji"
+    elif dim==2:
+        return "yxji"
+    else:
+        return "xi"
+    
 def ader_arrays(self: "SD_Simulator"):
     """
     Allocate arrays to be used in the ADER time integration
@@ -28,6 +37,11 @@ def ader_arrays(self: "SD_Simulator"):
     if self.Z:
         self.dm.ML_fp_z = self.array_RS(dim="z",ader=True)
         self.dm.MR_fp_z = self.array_RS(dim="z",ader=True)
+        
+    #Arrays to store and impose boundary conditions
+    self.dm.BC_fp_x = self.array_BC(dim="x",ader=True)
+    self.dm.BC_fp_y = self.array_BC(dim="y",ader=True)
+    self.dm.BC_fp_z = self.array_BC(dim="z",ader=True)
 
 def ader_predictor(self: "SD_Simulator",prims=False) -> None:
     na = self.dm.xp.newaxis
@@ -67,7 +81,8 @@ def ader_predictor(self: "SD_Simulator",prims=False) -> None:
             #   z: cells on untouched dimension
             
             #Let's store dUdt first
-            self.dm.U_ader_sp[...] += np.einsum("np,upbcrs->unbcrs",self.dm.ader_inv,
+            s = ader_string(self.ndim)
+            self.dm.U_ader_sp[...] += np.einsum(f"np,up{s}->un{s}",self.dm.invader,
                                                  self.compute_sp_from_dfp_x()+
                                                  self.compute_sp_from_dfp_y()+
                                                  self.compute_sp_from_dfp_z())*self.dm.dt
@@ -79,7 +94,8 @@ def ader_predictor(self: "SD_Simulator",prims=False) -> None:
 def ader_update(self: "SD_Simulator"):
     na = self.dm.xp.newaxis
     # dUdt = (dFxdx +dFydy + S)dt 
-    dUdt = (np.einsum("t,utbcrs->ubcrs",self.dm.w_tp,
+    s = ader_string(self.ndim)
+    dUdt = (np.einsum(f"t,ut{s}->u{s}",self.dm.w_tp,
                             self.compute_sp_from_dfp_x()+
                             self.compute_sp_from_dfp_y()+
                             self.compute_sp_from_dfp_z())*self.dm.dt)
@@ -97,13 +113,18 @@ def solve_faces(self: "SD_Simulator", M, ader_iter, prims=False)->None:
     vx = self._vx_
     vy = self._vy_
     vz = self._vz_
-    self.dm.M_ader_fp_x[...] = self.compute_fp_from_sp(M,0)
+    self.dm.M_ader_fp_x[...] = self.compute_fp_from_sp(M,"x",ader=True)
     self.compute_fluxes(self.dm.F_ader_fp_x, self.dm.M_ader_fp_x,vx,vy,vz,prims)
     if self.Y:
-        self.dm.M_ader_fp_y[...] = self.compute_fp_from_sp(M,1)
+        self.dm.M_ader_fp_y[...] = self.compute_fp_from_sp(M,"y",ader=True)
         v1,v2 = ((vz,vx),(vx,vz)) [self.Z]
         self.compute_fluxes(self.dm.F_ader_fp_y, self.dm.M_ader_fp_y,vy,v1,v2,prims)
     if self.Z:
-        self.dm.M_ader_fp_z[...] = self.compute_fp_from_sp(M,2)
+        self.dm.M_ader_fp_z[...] = self.compute_fp_from_sp(M,"z",ader=True)
         self.compute_fluxes(self.dm.F_ader_fp_z, self.dm.M_ader_fp_z,vz,vx,vy,prims)
+
+    bc.store_BC(self,self.dm.BC_fp_x,self.dm.M_ader_fp_x,"x")
+    bc.store_interfaces(self,self.dm.M_ader_fp_x,"x")
+    #Here would go the BC comms between different domains
+    bc.apply_BC(self,"x")
     return
