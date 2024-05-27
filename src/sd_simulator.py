@@ -214,8 +214,8 @@ class SD_Simulator:
     def array1d(self,px,ngh=0,ader=False) -> np.ndarray:
         shape = [self.nvar,self.nader] if ader else [self.nvar]
         shape += [self.Nx+2*ngh,px]
+        return np.ndarray(shape)
         
-    
     def array2d(self,px,py,ngh=0,ader=False)-> np.ndarray:
         shape = [self.nvar,self.nader] if ader else [self.nvar]
         shape += [self.Ny+2*ngh,self.Nx+2*ngh,py,px]
@@ -227,7 +227,7 @@ class SD_Simulator:
                   pz,py,px]
         return np.ndarray(shape)
     
-    def array(self,px,py,pz,ader=False,**kwargs) -> np.ndarray:
+    def array(self,px,py,pz,**kwargs) -> np.ndarray:
         if self.ndim==1:
             return self.array1d(px,**kwargs)
         if self.ndim==2:
@@ -250,7 +250,16 @@ class SD_Simulator:
             (p+1+("y" in dims)),
             (p+1+("z" in dims)),
             **kwargs)
-        
+    
+    def array_RS(self,dim="x",ader=0)->np.ndarray:
+        shape = [self.nvar,self.nader] if ader else [self.nvar]
+        if self.Z:
+            shape += [self.Nz+(dim=="z")]
+        if self.Y:
+            shape += [self.Ny+(dim=="y")]
+        shape += [self.Nx+(dim=="x"),self.p+1]
+        return np.ndarray(shape)
+
     def crop_1d(self,M)->np.ndarray:
         ngh = self.Nghe
         return M[:,ngh:-ngh,...]
