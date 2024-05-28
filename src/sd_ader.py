@@ -74,15 +74,10 @@ def ader_predictor(self: "SD_Simulator",prims=False) -> None:
             #   u: conservative variables
             #   n: ADER substeps, next
             #   p: ADER substeps, prev
-            #   r, s: sol pts
-            #   x: sol pts on untouched dimension
-            #   f: flux pts
-            #   b, c: cells
-            #   z: cells on untouched dimension
             
             #Let's store dUdt first
             s = ader_string(self.ndim)
-            self.dm.U_ader_sp[...] += np.einsum(f"np,up{s}->un{s}",self.dm.invader,
+            self.dm.U_ader_sp[...] = np.einsum(f"np,up{s}->un{s}",self.dm.invader,
                                                  self.compute_sp_from_dfp_x()+
                                                  self.compute_sp_from_dfp_y()+
                                                  self.compute_sp_from_dfp_z())*self.dm.dt
@@ -101,7 +96,7 @@ def ader_update(self: "SD_Simulator"):
                             self.compute_sp_from_dfp_z())*self.dm.dt)
         
     # U_new = U_old - dUdt
-    self.dm.U_sp[...] -= dUdt
+    self.dm.U_sp -= dUdt
     
     # Compute primitive variables at solution points from updated solution    
     self.dm.W_sp =  self.compute_primitives(self.dm.U_sp)
@@ -117,14 +112,13 @@ def solve_faces(self: "SD_Simulator", M, ader_iter, prims=False)->None:
     self.compute_fluxes(self.dm.F_ader_fp_x, self.dm.M_ader_fp_x,vx,vy,vz,prims)
     if self.Y:
         self.dm.M_ader_fp_y[...] = self.compute_fp_from_sp(M,"y",ader=True)
-        v1,v2 = ((vz,vx),(vx,vz)) [self.Z]
-        self.compute_fluxes(self.dm.F_ader_fp_y, self.dm.M_ader_fp_y,vy,v1,v2,prims)
+        self.compute_fluxes(self.dm.F_ader_fp_y, self.dm.M_ader_fp_y,vy,vx,vz,prims)
     if self.Z:
         self.dm.M_ader_fp_z[...] = self.compute_fp_from_sp(M,"z",ader=True)
         self.compute_fluxes(self.dm.F_ader_fp_z, self.dm.M_ader_fp_z,vz,vx,vy,prims)
 
-    bc.store_BC(self,self.dm.BC_fp_x,self.dm.M_ader_fp_x,"x")
-    bc.store_interfaces(self,self.dm.M_ader_fp_x,"x")
+    #bc.store_BC(self,self.dm.BC_fp_x,self.dm.M_ader_fp_x,"x")
+    #bc.store_interfaces(self,self.dm.M_ader_fp_x,"x")
     #Here would go the BC comms between different domains
-    bc.apply_BC(self,"x")
+    #bc.apply_BC(self,"x")
     return

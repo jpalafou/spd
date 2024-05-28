@@ -29,7 +29,6 @@ def store_BC(self,BC_array,M,dim) -> None:
     #We store the intercell face/corner values to be used when performing
     #the Riemann Solver
     na=np.newaxis
-    print(dim,self.BC[dim],BC_array.shape)
     if self.BC[dim] == "periodic":
         BC_array[0] = slice_array(M,dim,-1,self.ndim)
         BC_array[1] = slice_array(M,dim, 0,self.ndim)

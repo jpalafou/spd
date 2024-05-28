@@ -62,9 +62,7 @@ class SD_Simulator:
         dims = ["x","y","z"]
         for dim in range(ndim):
             self.dims[dim] = dims[dim]
-            self.BC[dims[dim]] = BC[0]  
-        print(self.dims)   
-        print(self.BC)       
+            self.BC[dims[dim]] = BC[0]     
 
         self.dm = GPUDataManager(use_cupy)
         
@@ -91,9 +89,13 @@ class SD_Simulator:
         if self.Y: 
             self._vy_ = nvar
             nvar+=1
+        else:
+            self._vy_ = -1
         if self.Z: 
             self._vz_ = nvar
             nvar+=1
+        else:
+            self._vz_ = -1
         self._p_  = nvar
         nvar+=1
         assert nvar == 2 + self.ndim
@@ -458,8 +460,8 @@ class SD_Simulator:
             hydro.compute_dt(self)
             self.perform_update()
         self.dm.switch_to(CupyLocation.host)
-        self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp)
-        self.dm.W_cv[...] = self.compute_primitives(self.dm.U_cv)
+        #self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp)
+        self.dm.W_cv[...] = self.compute_cv_from_sp(self.dm.W_sp)
      
 
                     
