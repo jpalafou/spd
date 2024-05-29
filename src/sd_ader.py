@@ -71,9 +71,12 @@ def create_dicts(self):
         self.BC_fp["z"] = self.dm.BC_fp_z    
 
 def ader_dudt(self):
-    return (self.compute_sp_from_dfp_x()+
-            self.compute_sp_from_dfp_y()+
-            self.compute_sp_from_dfp_z())
+    dUdt = self.compute_sp_from_dfp_x()
+    if self.Y:
+        dUdt += self.compute_sp_from_dfp_y()
+    if self.Z:
+        dUdt += self.compute_sp_from_dfp_z()
+    return dUdt
 
 def ader_predictor(self: "SD_Simulator",prims=False) -> None:
     na = self.dm.xp.newaxis

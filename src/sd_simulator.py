@@ -17,6 +17,9 @@ from polynomials import quadrature_mean
 from initial_conditions_3d import sine_wave
 import sd_ader
 import hydro
+from transforms import compute_A_from_B
+from transforms import compute_A_from_B_full
+
 import riemann_solver as rs
 
 class SD_Simulator:
@@ -322,78 +325,29 @@ class SD_Simulator:
         if self.ndim==1:
             return self.crop_1d(M)
     
-    def compute_A_from_B(self,B,A_to_B,dim,ader=False) -> np.ndarray:
-        # Axes labels:
-        #   u: Conservative variables
-        #   z,y,x: cells
-        #   k,j,i: B pts
-        #   n,m,l: A pts
-        y = ("","y") [self.Y]
-        j = ("","j") [self.Y]
-        z = ("","z") [self.Z]
-        k = ("","k") [self.Z]
-        t = ("","t") [ader]
-        if dim=="x":
-            u = f"u{t}{z}{y}x{k}{j}"
-            A = np.einsum(f"fs,{u}s->{u}f",A_to_B, B)
-        elif dim=="y" and self.Y:
-            u = f"u{t}{z}{y}x{k}"
-            A = np.einsum(f"fs,{u}si->{u}fi", A_to_B, B)
-        elif dim=="z" and self.Z:
-            A = np.einsum(f"fs,u{t}zyxsji->u{t}zyxfji", A_to_B, B)
-        else:
-            raise("Wrong option for dim")
-        return A
-    
-    def compute_A_from_B_full(self,B,A_to_B) -> np.ndarray:
-       # Axes labels:
-        #   u: Conservative variables
-        #   z,y,x: cells
-        #   k,j,i: A
-        #   n,m,l: B
-        if self.ndim==3:
-            A = np.einsum("kn,jm,il,uzyxnml->uzyxkji",
-                         A_to_B,
-                         A_to_B,
-                         A_to_B, B)
-        elif self.ndim==2:
-            A = np.einsum("jm,il,uyxml->uyxji",
-                         A_to_B,
-                         A_to_B, B)
-        else:
-            A = np.einsum("il,uxl->uxi",
-                         A_to_B, B)
-        return A
-    
-    def compute_sp_from_cv(self,M_cv)->Union[np.ndarray,cp.ndarray]:
-        return self.compute_A_from_B_full(M_cv,self.dm.cv_to_sp)
+    def compute_sp_from_cv(self,M_cv)->np.ndarray:
+        return compute_A_from_B_full(M_cv,self.dm.cv_to_sp,self.ndim)
         
     def compute_cv_from_sp(self,M_sp)->np.ndarray:
-        return self.compute_A_from_B_full(M_sp,self.dm.sp_to_cv)
+        return compute_A_from_B_full(M_sp,self.dm.sp_to_cv,self.ndim)
     
     def compute_sp_from_fp(self,M_fp,dim,**kwargs) -> np.ndarray:
-        return self.compute_A_from_B(M_fp,self.dm.fp_to_sp,dim,**kwargs)
+        return compute_A_from_B(M_fp,self.dm.fp_to_sp,dim,self.ndim,**kwargs)
     
     def compute_fp_from_sp(self,M_sp,dim,**kwargs) -> np.ndarray:
-        return self.compute_A_from_B(M_sp,self.dm.sp_to_fp,dim,**kwargs)
+        return compute_A_from_B(M_sp,self.dm.sp_to_fp,dim,self.ndim,**kwargs)
     
     def compute_sp_from_dfp(self,M_fp,dim,**kwargs) -> np.ndarray:
-        return self.compute_A_from_B(M_fp,self.dm.dfp_to_sp,dim,**kwargs)
+        return compute_A_from_B(M_fp,self.dm.dfp_to_sp,dim,self.ndim,**kwargs)
     
     def compute_sp_from_dfp_x(self,ader=True):
         return self.compute_sp_from_dfp(self.dm.F_ader_fp_x,"x",ader=ader)/self.dx
         
     def compute_sp_from_dfp_y(self,ader=True):
-        if self.Y:
-            return self.compute_sp_from_dfp(self.dm.F_ader_fp_y,"y",ader=ader)/self.dy
-        else:
-            return 0
+        return self.compute_sp_from_dfp(self.dm.F_ader_fp_y,"y",ader=ader)/self.dy
         
     def compute_sp_from_dfp_z(self,ader=True):
-        if self.Z:
-            return self.compute_sp_from_dfp(self.dm.F_ader_fp_z,"z",ader=ader)/self.dz
-        else:
-            return 0
+        return self.compute_sp_from_dfp(self.dm.F_ader_fp_z,"z",ader=ader)/self.dz
     
     def compute_primitives(self,U)->np.ndarray:
         W = U.copy()
