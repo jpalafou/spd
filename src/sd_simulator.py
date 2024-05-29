@@ -17,6 +17,7 @@ from polynomials import quadrature_mean
 from initial_conditions_3d import sine_wave
 import sd_ader
 import hydro
+import riemann_solver as rs
 
 class SD_Simulator:
     def __init__(
@@ -36,7 +37,8 @@ class SD_Simulator:
         cfl_coeff: float = 0.8,
         min_c2: float = 1E-10,
         use_cupy: bool = True,
-        BC: Tuple = ("periodic","periodic","periodic")
+        BC: Tuple = ("periodic","periodic","periodic"),
+        riemann_solver_sd: Callable = rs.llf,
     ):
         self.init_fct = init_fct
         if m==-1:
@@ -55,6 +57,7 @@ class SD_Simulator:
         self.gamma=gamma
         self.cfl_coeff = cfl_coeff
         self.min_c2 = min_c2
+        self.riemann_solver_sd = riemann_solver_sd
 
         assert len(BC) >= ndim
         self.BC = defaultdict(list)
@@ -100,6 +103,7 @@ class SD_Simulator:
         nvar+=1
         assert nvar == 2 + self.ndim
         self.nvar = nvar
+        self.vels=np.array([self._vx_,self._vy_,self._vz_])[:self.ndim]
 
         self.x, self.w = gauss_legendre_quadrature(0.0, 1.0, p)
 
@@ -419,29 +423,24 @@ class SD_Simulator:
         U[self._p_] = W[self._p_]/(self.gamma-1)+K
         return U
     
-    def compute_fluxes(self,F,M,v_1,v_2,v_3,prims)->np.ndarray:
+    def compute_fluxes(self,F,M,vels,prims)->np.ndarray:
+        assert len(vels)==self.ndim
         _p_ = self._p_
         if prims:
             W = M
         else:
             W = self.compute_primitives(M)
-
+        v_1 = vels[0]
         m_1 = W[0]*W[v_1]
         K = m_1*W[v_1]
         if self.ndim>=2:
-            m_2 = W[0]*W[v_2]
-            K += m_2*W[v_2]
-        if self.ndim==3:
-            m_3 = W[0]*W[v_3]
-            K += m_3*W[v_3]
-            
-        E   = W[_p_]/(self.gamma-1) + 0.5*K
+            for v in vels[1:]:
+                m = W[0]*W[v]
+                K += m*W[v]
+                F[v,...] = m*W[v_1]
+        E = W[_p_]/(self.gamma-1) + 0.5*K
         F[0  ,...] = m_1
         F[v_1,...] = m_1*W[v_1] + W[_p_]
-        if self.ndim>=2:
-            F[v_2,...] = m_2*W[v_1] 
-        if self.ndim==3:
-            F[v_3,...] = m_3*W[v_1]
         F[_p_,...] = W[v_1]*(E + W[_p_])
 
     def perform_update(self) -> bool:
@@ -456,14 +455,30 @@ class SD_Simulator:
     
     def perform_iterations(self, n_step: int) -> None:
         self.dm.switch_to(CupyLocation.device)
+        sd_ader.create_dicts(self)
         for i in range(n_step):
             hydro.compute_dt(self)
             self.perform_update()
         self.dm.switch_to(CupyLocation.host)
-        #self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp)
+        self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp)
         self.dm.W_cv[...] = self.compute_cv_from_sp(self.dm.W_sp)
      
-
+    def perform_time_evolution(self, t_end: float, nsteps=0) -> None:
+        self.dm.switch_to(CupyLocation.device)
+        sd_ader.create_dicts(self)
+        while(self.time < t_end):
+            if not self.n_step % 100:
+                print(f"Time step #{self.n_step} (t = {self.time})",end="\r")
+            hydro.compute_dt(self)   
+            if(self.time + self.dm.dt >= t_end):
+                self.dm.dt = t_end-self.time
+            if(self.dm.dt < 1E-14):
+                print(f"dt={self.dm.dt}")
+                break
+            self.status = self.perform_update()
+        self.dm.switch_to(CupyLocation.host)
+        self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp)
+        self.dm.W_cv[...] = self.compute_cv_from_sp(self.dm.W_sp)
                     
 
         

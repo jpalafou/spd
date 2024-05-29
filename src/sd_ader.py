@@ -1,10 +1,11 @@
 import numpy as np
+from collections import defaultdict
 import sd_boundary as bc
 
-def ader_string(dim):
-    if dim==3:
+def ader_string(ndim):
+    if ndim==3:
         return "zyxkji"
-    elif dim==2:
+    elif ndim==2:
         return "yxji"
     else:
         return "xi"
@@ -13,8 +14,6 @@ def ader_arrays(self: "SD_Simulator"):
     """
     Allocate arrays to be used in the ADER time integration
     """
-    nader=self.nader
-    nvar=self.nvar
     self.dm.U_ader_sp = self.array_sp(ader=True)
     #Conservative/Primitive varibles at flux points
     #Conservative fluxes at flux points
@@ -26,22 +25,55 @@ def ader_arrays(self: "SD_Simulator"):
     if self.Z:
         self.dm.M_ader_fp_z = self.array_fp(dims="z",ader=True)
         self.dm.F_ader_fp_z = self.array_fp(dims="z",ader=True)
-
+        
     #Arrays to Solve Riemann problem at the interface between
     #elements
     self.dm.ML_fp_x = self.array_RS(dim="x",ader=True)
     self.dm.MR_fp_x = self.array_RS(dim="x",ader=True)
+    self.dm.BC_fp_x = self.array_BC(dim="x",ader=True)
     if self.Y:
         self.dm.ML_fp_y = self.array_RS(dim="y",ader=True)
         self.dm.MR_fp_y = self.array_RS(dim="y",ader=True)
+        self.dm.BC_fp_y = self.array_BC(dim="y",ader=True)
     if self.Z:
         self.dm.ML_fp_z = self.array_RS(dim="z",ader=True)
         self.dm.MR_fp_z = self.array_RS(dim="z",ader=True)
-        
-    #Arrays to store and impose boundary conditions
-    self.dm.BC_fp_x = self.array_BC(dim="x",ader=True)
-    self.dm.BC_fp_y = self.array_BC(dim="y",ader=True)
-    self.dm.BC_fp_z = self.array_BC(dim="z",ader=True)
+        self.dm.BC_fp_z = self.array_BC(dim="z",ader=True)
+
+def create_dicts(self):
+    self.M_ader_fp = defaultdict(list)
+    self.F_ader_fp = defaultdict(list)
+    self.MR_fp = defaultdict(list)
+    self.ML_fp = defaultdict(list)
+    self.BC_fp = defaultdict(list)
+
+    self.M_ader_fp["x"] = self.dm.M_ader_fp_x
+    self.F_ader_fp["x"] = self.dm.F_ader_fp_x
+    if self.Y:
+        self.M_ader_fp["y"] = self.dm.M_ader_fp_y
+        self.F_ader_fp["y"] = self.dm.F_ader_fp_y
+    if self.Z:
+        self.M_ader_fp["z"] = self.dm.M_ader_fp_z
+        self.F_ader_fp["z"] = self.dm.F_ader_fp_z
+
+    #Arrays to Solve Riemann problem at the interface between
+    #elements
+    self.MR_fp["x"] = self.dm.MR_fp_x
+    self.ML_fp["x"] = self.dm.ML_fp_x
+    self.BC_fp["x"] = self.dm.BC_fp_x
+    if self.Y:
+        self.MR_fp["y"] = self.dm.MR_fp_y
+        self.ML_fp["y"] = self.dm.ML_fp_y
+        self.BC_fp["y"] = self.dm.BC_fp_y
+    if self.Z:
+        self.MR_fp["z"] = self.dm.MR_fp_z
+        self.ML_fp["z"] = self.dm.ML_fp_z
+        self.BC_fp["z"] = self.dm.BC_fp_z    
+
+def ader_dudt(self):
+    return (self.compute_sp_from_dfp_x()+
+            self.compute_sp_from_dfp_y()+
+            self.compute_sp_from_dfp_z())
 
 def ader_predictor(self: "SD_Simulator",prims=False) -> None:
     na = self.dm.xp.newaxis
@@ -66,7 +98,7 @@ def ader_predictor(self: "SD_Simulator",prims=False) -> None:
             M = self.dm.U_ader_sp
         # Once M hosts the correct set of variables,
         # we can interpolate to faces, and solve    
-        solve_faces(self,M,ader_iter)
+        solve_faces(self,M,ader_iter,prims=prims)
             
         if ader_iter < self.m:
             # 2c) Compute new iteration value.
@@ -78,22 +110,16 @@ def ader_predictor(self: "SD_Simulator",prims=False) -> None:
             #Let's store dUdt first
             s = ader_string(self.ndim)
             self.dm.U_ader_sp[...] = np.einsum(f"np,up{s}->un{s}",self.dm.invader,
-                                                 self.compute_sp_from_dfp_x()+
-                                                 self.compute_sp_from_dfp_y()+
-                                                 self.compute_sp_from_dfp_z())*self.dm.dt
+                                                ader_dudt(self))*self.dm.dt
             #Update
             # U_new = U_old - dUdt
             self.dm.U_ader_sp[...] = self.dm.U_sp[:,na] - self.dm.U_ader_sp
-                    
         
 def ader_update(self: "SD_Simulator"):
     na = self.dm.xp.newaxis
     # dUdt = (dFxdx +dFydy + S)dt 
     s = ader_string(self.ndim)
-    dUdt = (np.einsum(f"t,ut{s}->u{s}",self.dm.w_tp,
-                            self.compute_sp_from_dfp_x()+
-                            self.compute_sp_from_dfp_y()+
-                            self.compute_sp_from_dfp_z())*self.dm.dt)
+    dUdt = (np.einsum(f"t,ut{s}->u{s}",self.dm.w_tp,ader_dudt(self))*self.dm.dt)
         
     # U_new = U_old - dUdt
     self.dm.U_sp -= dUdt
@@ -105,20 +131,16 @@ def solve_faces(self: "SD_Simulator", M, ader_iter, prims=False)->None:
     na=np.newaxis
     # Interpolate M(U or W) to flux points
     # Then compute fluxes at flux points
-    vx = self._vx_
-    vy = self._vy_
-    vz = self._vz_
-    self.dm.M_ader_fp_x[...] = self.compute_fp_from_sp(M,"x",ader=True)
-    self.compute_fluxes(self.dm.F_ader_fp_x, self.dm.M_ader_fp_x,vx,vy,vz,prims)
-    if self.Y:
-        self.dm.M_ader_fp_y[...] = self.compute_fp_from_sp(M,"y",ader=True)
-        self.compute_fluxes(self.dm.F_ader_fp_y, self.dm.M_ader_fp_y,vy,vx,vz,prims)
-    if self.Z:
-        self.dm.M_ader_fp_z[...] = self.compute_fp_from_sp(M,"z",ader=True)
-        self.compute_fluxes(self.dm.F_ader_fp_z, self.dm.M_ader_fp_z,vz,vx,vy,prims)
+    for key in self.dims:
+        dim = self.dims[key]
+        vels = np.roll(self.vels,-key)
+        self.M_ader_fp[dim][...] = self.compute_fp_from_sp(M,dim,ader=True)
+        self.compute_fluxes(self.F_ader_fp[dim], self.M_ader_fp[dim],vels,prims)
+        bc.store_interfaces(self,self.M_ader_fp[dim],dim)
+        
+        bc.store_BC(self,self.BC_fp[dim],self.M_ader_fp[dim],dim)
+        #Here would go the BC comms between different domains
+        bc.apply_BC(self,dim)
 
-    #bc.store_BC(self,self.dm.BC_fp_x,self.dm.M_ader_fp_x,"x")
-    #bc.store_interfaces(self,self.dm.M_ader_fp_x,"x")
-    #Here would go the BC comms between different domains
-    #bc.apply_BC(self,"x")
-    return
+        self.riemann_solver_sd(self, self.ML_fp[dim], self.MR_fp[dim],vels,prims)
+        bc.apply_interfaces(self,self.F_ader_fp[dim],dim)
