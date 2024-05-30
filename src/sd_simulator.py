@@ -350,32 +350,18 @@ class SD_Simulator:
         return self.compute_sp_from_dfp(self.dm.F_ader_fp_z,"z",ader=ader)/self.dz
     
     def compute_primitives(self,U)->np.ndarray:
-        W = U.copy()
-        W[self._vx_] = U[self._vx_]/U[0]
-        K = W[self._vx_]**2
-        if self.Y:
-            W[self._vy_] = U[self._vy_]/U[0]
-            K += W[self._vy_]**2
-        if self.Z:
-            W[self._vz_] = U[self._vz_]/U[0]
-            K += W[self._vz_]**2
-        K  *= 0.5*U[0]
-        W[self._p_] = (self.gamma-1)*(U[self._p_]-K)
-        return W
+        return hydro.compute_primitives(
+                U,
+                self.vels,
+                self._p_,
+                self.gamma)
                 
     def compute_conservatives(self,W)->np.ndarray:
-        U = W.copy()
-        U[self._vx_] = W[self._vx_]*U[0]
-        K = W[self._vx_]**2
-        if self.Y:
-            U[self._vy_] = W[self._vy_]*U[0]
-            K += W[self._vy_]**2
-        if self.Z:
-            U[self._vz_] = W[self._vz_]*U[0]
-            K += W[self._vz_]**2
-        K  *= 0.5*U[0]
-        U[self._p_] = W[self._p_]/(self.gamma-1)+K
-        return U
+        return hydro.compute_conservatives(
+                W,
+                self.vels,
+                self._p_,
+                self.gamma)
     
     def compute_fluxes(self,F,M,vels,prims)->np.ndarray:
         assert len(vels)==self.ndim

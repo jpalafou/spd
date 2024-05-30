@@ -12,6 +12,41 @@ def compute_cs2(p,rho,gamma,min_c2):
 def compute_cs(p,rho,gamma,min_c2):
         return np.sqrt(compute_cs2(p,rho,gamma,min_c2))
 
+def compute_primitives(U,vels,_p_,gamma)->np.ndarray:
+        W = U.copy()
+        K = W[0].copy()*0
+        for vel in vels:
+            W[vel] = U[vel]/U[0]
+            K += W[vel]**2
+        K *= 0.5*U[0]
+        W[_p_] = (gamma-1)*(U[_p_]-K)
+        return W
+                
+def compute_conservatives(W,vels,_p_,gamma)->np.ndarray:
+        U = W.copy()
+        K = W[0].copy()*0
+        for vel in vels:
+            U[vel] = W[vel]*U[0]
+            K += W[vel]**2
+        K  *= 0.5*U[0]
+        U[_p_] = W[_p_]/(gamma-1)+K
+        return U
+
+def compute_fluxes_from_primitives(F,W,vels,_p_,gamma)->np.ndarray:
+        K = W[0].copy()*0
+        v1=vels[0]
+        for v in vels[::-1]:
+            #Iterate over inverted array of vels
+            #so that the last value of m correspond to the 
+            #normal component
+            m = W[0]*W[v]
+            K += m*W[v]
+            F[v,...] = m*W[v1]
+        E = W[_p_]/(gamma-1) + 0.5*K
+        F[0  ,...] = m
+        F[v1,...] = m*W[v1] + W[_p_]
+        F[_p_,...] = W[v1]*(E + W[_p_])
+
 def compute_fluxes(self,M,vels,prims=True)->np.ndarray:
     F = M.copy()
     self.compute_fluxes(F,M,vels,prims=prims)
