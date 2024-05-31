@@ -1,6 +1,6 @@
 import numpy as np
 
-def step_function(xy: np.ndarray,case: int, vx=1, vy=1):
+def step_function(xy: np.ndarray,case: int, vx=1, vy=1, P=1):
     x=xy[0]
     y=xy[1]
     if case==0:
@@ -15,16 +15,16 @@ def step_function(xy: np.ndarray,case: int, vx=1, vy=1):
         return vy*np.ones(x.shape)
     elif case==3:
         #Pressure
-        return np.ones(x.shape)
+        return P*np.ones(x.shape)
     else:
         return np.ones(x.shape)
     
-def sine_wave(xy: np.ndarray,case: int, vx=1, vy=1):
+def sine_wave(xy: np.ndarray,case: int, A=0.125, vx=1, vy=1, P=1):
     x=xy[0]
     y=xy[1]
     if case==0:
         #density
-        return 1.0+0.125*(np.sin(2*np.pi*(x+y)))
+        return 1.0+A*(np.sin(2*np.pi*(x+y)))
     elif case==1:
         #vx
         return vx*np.ones(x.shape)
@@ -33,6 +33,6 @@ def sine_wave(xy: np.ndarray,case: int, vx=1, vy=1):
         return vy*np.ones(x.shape)
     elif case==3:
         #Pressure
-        return np.ones(x.shape)
+        return P*np.ones(x.shape)
     else:
         return np.ones(x.shape)

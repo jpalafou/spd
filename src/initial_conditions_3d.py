@@ -2,11 +2,11 @@ import numpy as np
 import initial_conditions_1d as ic1d
 import initial_conditions_2d as ic2d
 
-def step_function(xyz: np.ndarray,case: int, vx=1, vy=1, vz=1):
+def step_function(xyz: np.ndarray,case: int, vx=1, vy=1, vz=1, P=1):
     if xyz.shape[0]==1:
-        return ic1d.step_function(xyz,case,vx=vx)
+        return ic1d.step_function(xyz,case,vx=vx,P=P)
     if xyz.shape[0]==2:
-        return ic2d.step_function(xyz,case,vx=vx,vy=vy)
+        return ic2d.step_function(xyz,case,vx=vx,vy=vy,P=P)
     x=xyz[0]
     y=xyz[1]
     z=xyz[2]
@@ -26,17 +26,21 @@ def step_function(xyz: np.ndarray,case: int, vx=1, vy=1, vz=1):
         return vz*np.ones(x.shape)
     elif case==4:
         #Pressure
-        return np.ones(x.shape)
+        return P*np.ones(x.shape)
     else:
         return np.ones(x.shape)
-    
-def sine_wave(xyz: np.ndarray,case: int, vx=1, vy=1, vz=1):
+
+def sine_wave(xyz: np.ndarray,case: int, A=0.125, vx=1, vy=1, vz=1, P=1):
+    if xyz.shape[0]==1:
+        return ic1d.sine_wave(xyz,case,vx=vx,P=P)
+    if xyz.shape[0]==2:
+        return ic2d.sine_wave(xyz,case,vx=vx,vy=vy,P=P)
     x=xyz[0]
     y=xyz[1]
     z=xyz[2]
     if case==0:
         #density
-        return 1.0+0.125*(np.sin(2*np.pi*(x+y+z)))
+        return 1.0+A*(np.sin(2*np.pi*(x+y+z)))
     elif case==1:
         #vx
         return vx*np.ones(x.shape)
@@ -48,6 +52,6 @@ def sine_wave(xyz: np.ndarray,case: int, vx=1, vy=1, vz=1):
         return vz*np.ones(x.shape)
     elif case==4:
         #Pressure
-        return np.ones(x.shape)
+        return P*np.ones(x.shape)
     else:
         return np.ones(x.shape)
