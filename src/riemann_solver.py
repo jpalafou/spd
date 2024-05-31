@@ -2,10 +2,12 @@ import numpy as np
 import hydro
 
 def llf(
-    s: "simulator",
     M_L: np.ndarray,
     M_R: np.ndarray,
     vels: np.array,
+    _p_: int,
+    gamma: float,
+    min_c2: float,
     prims: bool,
     *args,
     **kwargs,
@@ -18,23 +20,25 @@ def llf(
     Output:
     The resulting fluxes are written in M_R
     """
+    #Density index
+    _d_=0 
     if prims:
         W_L = M_L
         W_R = M_R
-        U_L = s.compute_conservatives(W_L)
-        U_R = s.compute_conservatives(W_R)
+        U_L = hydro.compute_conservatives(W_L,vels,_p_,gamma)
+        U_R = hydro.compute_conservatives(W_R,vels,_p_,gamma)
     else:
         U_L = M_L
         U_R = M_R
-        W_L = s.compute_primitives(U_L)
-        W_R = s.compute_primitives(U_R)
+        W_L = hydro.compute_primitives(U_L,vels,_p_,gamma)
+        W_R = hydro.compute_primitives(U_R,vels,_p_,gamma)
     
     v_1 = vels[0]
-    F_L = hydro.compute_fluxes(s,W_L,vels)
-    F_R = hydro.compute_fluxes(s,W_R,vels)
+    F_L = hydro.compute_fluxes(W_L,vels,_p_,gamma)
+    F_R = hydro.compute_fluxes(W_R,vels,_p_,gamma)
     
-    c_L = hydro.compute_cs(W_L[s._p_],W_L[s._d_],s.gamma,s.min_c2) + np.abs(W_L[v_1])
-    c_R = hydro.compute_cs(W_R[s._p_],W_R[s._d_],s.gamma,s.min_c2) + np.abs(W_R[v_1])
+    c_L = hydro.compute_cs(W_L[_p_],W_L[_d_],gamma,min_c2) + np.abs(W_L[v_1])
+    c_R = hydro.compute_cs(W_R[_p_],W_R[_d_],gamma,min_c2) + np.abs(W_R[v_1])
     
     c_max = np.where(c_L>c_R,c_L,c_R)[np.newaxis,...]
         

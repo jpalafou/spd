@@ -3,62 +3,124 @@ from typing import Union
 import numpy as np
 import cupy as cp
 
-def compute_cs2(p,rho,gamma,min_c2):
-        c2 = gamma*p/rho
-        #np.maximum propagates NaNs, so we use np.where
-        c2 = np.where(c2>min_c2,c2,min_c2)
-        return c2
+def compute_cs2(
+        p: np.ndarray,
+        rho: np.ndarray,
+        gamma: float,
+        min_c2: float)->np.ndarray:
+    """
+    INPUT:
+    P: Array of Pressure values
+    rho: Array of density values
+    gamma: Adiabatic index
+    min_c2: Minimum value allowed for the square of the sound speed
+    OUTPUT:
+    Cs^2: Sound speed square
+    """
+    c2 = gamma*p/rho
+    #np.maximum propagates NaNs, so we use np.where
+    c2 = np.where(c2>min_c2,c2,min_c2)
+    return c2
 
-def compute_cs(p,rho,gamma,min_c2):
-        return np.sqrt(compute_cs2(p,rho,gamma,min_c2))
+def compute_cs(
+        P: np.ndarray,
+        rho: np.ndarray,
+        gamma: float,
+        min_c2: float)->np.ndarray:
+    """
+    INPUT:
+    P: Array of Pressure values
+    rho: Array of density values
+    gamma: Adiabatic index
+    min_c2: Minimum value allowed for the square of the sound speed
+    OUTPUT:
+    Cs: Array of sound speed values
+    """
+    return np.sqrt(compute_cs2(p,rho,gamma,min_c2))
 
-def compute_primitives(U,vels,_p_,gamma)->np.ndarray:
+def compute_primitives(
+        U: np.ndarray,
+        vels: np.array,
+        _p_: int,
+        gamma: float,
+        W=None)->np.ndarray:
+    """
+    INPUT:
+    U: Solution array of conseved variables
+    vels: array containing the indices of velocity components [vx,vy,vz]
+    in the Solution array. The size of this array has to match the number of dimensions
+    _p_: index of pressure/energy in the Solution array
+    gamma: Adiabatic index
+    OUTPUT:
+    W: Solution array of primitive variables
+    """
+    if type(W)==type(None):
         W = U.copy()
-        K = W[0].copy()*0
-        for vel in vels:
-            W[vel] = U[vel]/U[0]
-            K += W[vel]**2
-        K *= 0.5*U[0]
-        W[_p_] = (gamma-1)*(U[_p_]-K)
-        return W
+    assert W.shape == U.shape
+    K = W[0].copy()*0
+    for vel in vels:
+        W[vel] = U[vel]/U[0]
+        K += W[vel]**2
+    K *= 0.5*U[0]
+    W[_p_] = (gamma-1)*(U[_p_]-K)
+    return W
                 
-def compute_conservatives(W,vels,_p_,gamma)->np.ndarray:
+def compute_conservatives(
+        W: np.ndarray,
+        vels: np.array,
+        _p_: int,
+        gamma: float,
+        U=None)->np.ndarray:
+    """
+    INPUT:
+    W: Solution array of primitive variables
+    vels: array containing the indices of velocity components [vx,vy,vz]
+    in the Solution array. The size of this array has to match the number of dimensions
+    _p_: index of pressure/energy in the Solution array
+    gamma: Adiabatic index
+    OUTPUT:
+    U: Solution array of conserved variables
+    """
+    if type(U)==type(None):
         U = W.copy()
-        K = W[0].copy()*0
-        for vel in vels:
-            U[vel] = W[vel]*U[0]
-            K += W[vel]**2
-        K  *= 0.5*U[0]
-        U[_p_] = W[_p_]/(gamma-1)+K
-        return U
+    assert U.shape == W.shape
+    K = W[0].copy()*0
+    for vel in vels:
+        U[vel] = W[vel]*U[0]
+        K += W[vel]**2
+    K  *= 0.5*U[0]
+    U[_p_] = W[_p_]/(gamma-1)+K
+    return U
 
-def compute_fluxes_from_primitives(F,W,vels,_p_,gamma)->np.ndarray:
-        K = W[0].copy()*0
-        v1=vels[0]
-        for v in vels[::-1]:
-            #Iterate over inverted array of vels
-            #so that the last value of m correspond to the 
-            #normal component
-            m = W[0]*W[v]
-            K += m*W[v]
-            F[v,...] = m*W[v1]
-        E = W[_p_]/(gamma-1) + 0.5*K
-        F[0  ,...] = m
-        F[v1,...] = m*W[v1] + W[_p_]
-        F[_p_,...] = W[v1]*(E + W[_p_])
-
-def compute_fluxes(self,M,vels,prims=True)->np.ndarray:
-    F = M.copy()
-    self.compute_fluxes(F,M,vels,prims=prims)
+def compute_fluxes(
+        W: np.ndarray,
+        vels: np.array,
+        _p_: int,
+        gamma: float,
+        F=None)->np.ndarray:
+    """
+    INPUT:
+    W: Solution array of primitive variables
+    vels: array containing the indices of velocity components [vx,vy,vz]
+    in the Solution array. The size of this array has to match the number of dimensions
+    _p_: index of pressure/energy in the Solution array
+    gamma: Adiabatic index
+    OUTPUT:
+    F: Solution array of fluxes for the conserved variables
+    """
+    if type(F)==type(None):
+        F = W.copy()
+    K = W[0].copy()*0
+    v1=vels[0]
+    for v in vels[::-1]:
+        #Iterate over inverted array of vels
+        #so that the last value of m correspond to the 
+        #normal component
+        m = W[0]*W[v]
+        K += m*W[v]
+        F[v,...] = m*W[v1]
+    E = W[_p_]/(gamma-1) + 0.5*K
+    F[0  ,...] = m
+    F[v1,...] = m*W[v1] + W[_p_]
+    F[_p_,...] = W[v1]*(E + W[_p_])
     return F
-
-def compute_dt(self: "SD_Simulator") -> None:
-    W = self.dm.W_cv
-    c_s = compute_cs(W[self._p_],W[self._d_],self.gamma,self.min_c2)
-    c = np.abs(W[self._vx_])+c_s
-    if self.Y:
-        c += np.abs(W[self._vy_])+c_s
-    if self.Z:
-        c += np.abs(W[self._vz_])+c_s
-    c_max = np.max(c)
-    self.dm.dt = self.cfl_coeff*min(self.dx,min(self.dy,self.dz))/c_max/(self.p + 1)

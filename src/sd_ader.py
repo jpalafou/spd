@@ -145,5 +145,5 @@ def solve_faces(self: "SD_Simulator", M, ader_iter, prims=False)->None:
         #Here would go the BC comms between different domains
         bc.apply_BC(self,dim)
 
-        self.riemann_solver_sd(self, self.ML_fp[dim], self.MR_fp[dim],vels,prims)
+        self.riemann_solver_sd(self.ML_fp[dim], self.MR_fp[dim], vels, self._p_, self.gamma, self.min_c2, prims)
         bc.apply_interfaces(self,self.F_ader_fp[dim],dim)

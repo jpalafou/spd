@@ -152,7 +152,7 @@ class SD_Simulator:
         self.dm.Z_sp = Z_sp.reshape(self.Nz,self.nz)
 
         self.post_init()
-        hydro.compute_dt(self)
+        self.compute_dt()
         print(f"dt = {self.dm.dt}")
 
     def compute_mesh_cv(self) -> np.ndarray:
@@ -219,7 +219,7 @@ class SD_Simulator:
         x = .5*(x[1:]+x[:-1])
         x_sp = solution_points(0.0, 1.0, p)
         m = lagrange_matrix(x, x_sp)
-        W_r = self.compute_A_from_B_full(W,m)
+        W_r = compute_A_from_B_full(W,m,self.ndim)
         return self.transpose_to_fv(W_r)
     
     def transpose_to_fv(self,M):
@@ -349,39 +349,40 @@ class SD_Simulator:
     def compute_sp_from_dfp_z(self,ader=True):
         return self.compute_sp_from_dfp(self.dm.F_ader_fp_z,"z",ader=ader)/self.dz
     
-    def compute_primitives(self,U)->np.ndarray:
+    def compute_primitives(self,U,**kwargs)->np.ndarray:
         return hydro.compute_primitives(
                 U,
                 self.vels,
                 self._p_,
-                self.gamma)
+                self.gamma,
+                **kwargs)
                 
-    def compute_conservatives(self,W)->np.ndarray:
+    def compute_conservatives(self,W,**kwargs)->np.ndarray:
         return hydro.compute_conservatives(
                 W,
                 self.vels,
                 self._p_,
-                self.gamma)
+                self.gamma,
+                **kwargs)
     
     def compute_fluxes(self,F,M,vels,prims)->np.ndarray:
         assert len(vels)==self.ndim
-        _p_ = self._p_
         if prims:
             W = M
         else:
             W = self.compute_primitives(M)
-        v_1 = vels[0]
-        m_1 = W[0]*W[v_1]
-        K = m_1*W[v_1]
-        if self.ndim>=2:
-            for v in vels[1:]:
-                m = W[0]*W[v]
-                K += m*W[v]
-                F[v,...] = m*W[v_1]
-        E = W[_p_]/(self.gamma-1) + 0.5*K
-        F[0  ,...] = m_1
-        F[v_1,...] = m_1*W[v_1] + W[_p_]
-        F[_p_,...] = W[v_1]*(E + W[_p_])
+        hydro.compute_fluxes(W,vels,self._p_,self.gamma,F=F)
+
+    def compute_dt(self) -> None:
+        W = self.dm.W_cv
+        c_s = hydro.compute_cs(W[self._p_],W[self._d_],self.gamma,self.min_c2)
+        c = np.abs(W[self._vx_])+c_s
+        if self.Y:
+            c += np.abs(W[self._vy_])+c_s
+        if self.Z:
+            c += np.abs(W[self._vz_])+c_s
+        c_max = np.max(c)
+        self.dm.dt = self.cfl_coeff*min(self.dx,min(self.dy,self.dz))/c_max/(self.p + 1)
 
     def perform_update(self) -> bool:
         self.n_step += 1
@@ -397,9 +398,10 @@ class SD_Simulator:
         self.dm.switch_to(CupyLocation.device)
         sd_ader.create_dicts(self)
         for i in range(n_step):
-            hydro.compute_dt(self)
+            self.compute_dt()
             self.perform_update()
         self.dm.switch_to(CupyLocation.host)
+        sd_ader.create_dicts(self)
         self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp)
         self.dm.W_cv[...] = self.compute_cv_from_sp(self.dm.W_sp)
      
@@ -409,7 +411,7 @@ class SD_Simulator:
         while(self.time < t_end):
             if not self.n_step % 100:
                 print(f"Time step #{self.n_step} (t = {self.time})",end="\r")
-            hydro.compute_dt(self)   
+            self.compute_dt()   
             if(self.time + self.dm.dt >= t_end):
                 self.dm.dt = t_end-self.time
             if(self.dm.dt < 1E-14):
@@ -417,6 +419,7 @@ class SD_Simulator:
                 break
             self.status = self.perform_update()
         self.dm.switch_to(CupyLocation.host)
+        sd_ader.create_dicts(self)
         self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp)
         self.dm.W_cv[...] = self.compute_cv_from_sp(self.dm.W_sp)
                     
