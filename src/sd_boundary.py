@@ -61,6 +61,10 @@ def store_BC(self,BC_array,M,dim) -> None:
     if self.BC[dim] == "periodic":
         BC_array[0] = slice_array(M,dim,-1,self.ndim)
         BC_array[1] = slice_array(M,dim, 0,self.ndim)
+    elif self.BC[dim] == "reflective":
+        BC_array[0] = slice_array(M,dim, 0,self.ndim)
+        BC_array[1] = slice_array(M,dim,-1,self.ndim)
+        BC_array[:,self.dims2[dim]] = -BC_array[:,self.dims2[dim]]
     else:
         raise("Undetermined boundary type")
                          

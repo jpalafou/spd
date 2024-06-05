@@ -64,10 +64,12 @@ class SD_Simulator:
 
         assert len(BC) >= ndim
         self.BC = defaultdict(list)
-        self.dims = defaultdict(list) 
+        self.dims = defaultdict(list)
+        self.dims2 = defaultdict(list)
         dims = ["x","y","z"]
         for dim in range(ndim):
             self.dims[dim] = dims[dim]
+            self.dims2[dims[dim]] = dim
             self.BC[dims[dim]] = BC[0]     
 
         self.dm = GPUDataManager(use_cupy)
