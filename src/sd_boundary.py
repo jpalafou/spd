@@ -65,6 +65,9 @@ def store_BC(self,BC_array,M,dim) -> None:
         BC_array[0] = slice_array(M,dim, 0,self.ndim)
         BC_array[1] = slice_array(M,dim,-1,self.ndim)
         BC_array[:,self.dims2[dim]] = -BC_array[:,self.dims2[dim]]
+    elif self.BC[dim] == "gradfree":
+        BC_array[0] = slice_array(M,dim, 0,self.ndim)
+        BC_array[1] = slice_array(M,dim,-1,self.ndim)
     else:
         raise("Undetermined boundary type")
                          

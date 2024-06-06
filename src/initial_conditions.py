@@ -8,3 +8,6 @@ def step_function(**kwargs):
 
 def sine_wave(**kwargs):
     return lambda xyz,case : ic3d.sine_wave(xyz,case,**kwargs)
+
+def sod(**kwargs):
+    return lambda xyz,case : ic1d.sod_shock_tube(xyz,case,**kwargs)

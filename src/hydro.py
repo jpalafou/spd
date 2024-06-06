@@ -4,7 +4,7 @@ import numpy as np
 import cupy as cp
 
 def compute_cs2(
-        p: np.ndarray,
+        P: np.ndarray,
         rho: np.ndarray,
         gamma: float,
         min_c2: float)->np.ndarray:
@@ -17,7 +17,7 @@ def compute_cs2(
     OUTPUT:
     Cs^2: Sound speed square
     """
-    c2 = gamma*p/rho
+    c2 = gamma*P/rho
     #np.maximum propagates NaNs, so we use np.where
     c2 = np.where(c2>min_c2,c2,min_c2)
     return c2
@@ -36,7 +36,7 @@ def compute_cs(
     OUTPUT:
     Cs: Array of sound speed values
     """
-    return np.sqrt(compute_cs2(p,rho,gamma,min_c2))
+    return np.sqrt(compute_cs2(P,rho,gamma,min_c2))
 
 def compute_primitives(
         U: np.ndarray,
