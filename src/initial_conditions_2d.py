@@ -36,3 +36,18 @@ def sine_wave(xy: np.ndarray,case: int, A=0.125, vx=1, vy=1, P=1):
         return P*np.ones(x.shape)
     else:
         return np.ones(x.shape)
+
+def KH_instability(xy: np.ndarray, case: int) -> np.ndarray:
+    y=xy[1]
+    w0=0.1
+    sigma = 0.05/np.sqrt(2)
+    if case==0:
+        return np.where(y<0.25,1,np.where(y<0.75,2,1))
+    elif case==1:
+        return np.where(y<0.25,-0.5,np.where(y<0.75,0.5,-0.5))
+    elif case==2:
+        return w0*np.sin(4*np.pi*xy[0])*(np.exp(-(y-0.25)**2/(2*sigma**2))+np.exp(-(y-0.75)**2/(2*sigma**2)))
+    elif case==3:
+        return 2.5*np.ones(y.shape)
+    else:
+        return np.zeros(xy[0].shape)
