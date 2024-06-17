@@ -3,6 +3,7 @@ import sys
 import numpy as np
 import cupy as cp
 from collections import defaultdict
+from timeit import default_timer as timer
 
 from data_management import CupyLocation
 from data_management import GPUDataManager
@@ -155,7 +156,7 @@ class SD_Simulator:
 
         self.post_init()
         self.compute_dt()
-        print(f"dt = {self.dm.dt}")
+        #print(f"dt = {self.dm.dt}")
 
     def compute_mesh_cv(self) -> np.ndarray:
         na = np.newaxis
@@ -399,10 +400,12 @@ class SD_Simulator:
     def perform_iterations(self, n_step: int) -> None:
         self.dm.switch_to(CupyLocation.device)
         sd_ader.create_dicts(self)
+        self.execution_time = -timer() 
         for i in range(n_step):
             self.compute_dt()
             self.perform_update()
         self.dm.switch_to(CupyLocation.host)
+        self.execution_time += timer() 
         sd_ader.create_dicts(self)
         self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp)
         self.dm.W_cv[...] = self.compute_cv_from_sp(self.dm.W_sp)
