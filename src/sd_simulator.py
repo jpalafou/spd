@@ -397,22 +397,27 @@ class SD_Simulator:
         self.time += self.dm.dt
         return True
     
-    def perform_iterations(self, n_step: int) -> None:
+    def init_sim(self):
         self.dm.switch_to(CupyLocation.device)
         sd_ader.create_dicts(self)
         self.execution_time = -timer() 
-        for i in range(n_step):
-            self.compute_dt()
-            self.perform_update()
+
+    def end_sim(self):
         self.dm.switch_to(CupyLocation.host)
         self.execution_time += timer() 
         sd_ader.create_dicts(self)
         self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp)
         self.dm.W_cv[...] = self.compute_cv_from_sp(self.dm.W_sp)
+
+    def perform_iterations(self, n_step: int) -> None:
+        self.init_sim()
+        for i in range(n_step):
+            self.compute_dt()
+            self.perform_update()
+        self.end_sim()
      
     def perform_time_evolution(self, t_end: float, nsteps=0) -> None:
-        self.dm.switch_to(CupyLocation.device)
-        sd_ader.create_dicts(self)
+        self.init_sim()
         while(self.time < t_end):
             if not self.n_step % 100:
                 print(f"Time step #{self.n_step} (t = {self.time})",end="\r")
@@ -423,10 +428,6 @@ class SD_Simulator:
                 print(f"dt={self.dm.dt}")
                 break
             self.status = self.perform_update()
-        self.dm.switch_to(CupyLocation.host)
-        sd_ader.create_dicts(self)
-        self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp)
-        self.dm.W_cv[...] = self.compute_cv_from_sp(self.dm.W_sp)
-                    
+        self.end_sim()            
 
         
