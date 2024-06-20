@@ -9,26 +9,8 @@ from initial_conditions import sine_wave
 import riemann_solver as rs
 
 class SDADER_Simulator(SD_Simulator):
-    def __init__(
-        self,
-        init_fct: Callable = sine_wave(),
-        p: int =  1, 
-        m: int = -1,
-        Nx: int = 32,
-        Ny: int = 32,
-        Nz: int = 32,
-        Nghe: int = 1,
-        xlim: Tuple = (0,1),
-        ylim: Tuple = (0,1),
-        zlim: Tuple = (0,1),
-        ndim: int = 3,
-        gamma: float = 1.4,
-        cfl_coeff: float = 0.8,
-        min_c2: float = 1E-10,
-        use_cupy: bool = True,
-        BC: Tuple = ("periodic","periodic","periodic"),
-        riemann_solver_sd: Callable = rs.llf,):
-        SD_Simulator.__init__(self)
+    def __init__(self,*args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.ader_arrays()
 
     def ader_arrays(self):
