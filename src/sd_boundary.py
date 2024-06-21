@@ -1,57 +1,31 @@
 import numpy as np
 
+def cut(start,end,shift):
+    return (Ellipsis,)+(slice(start,end),)+(slice(None),)*(shift)
+   
 def store_interfaces(self,M,dim) -> None:
+    shift=self.ndim+self.dims2[dim]-1
     if dim=="x":
-        if self.Z:
-            #nvar,nader,Nz,Ny,Nx+1,p+1,p+1
-            self.dm.MR_fp_x[...,:-1,:,:] = M[..., 0]
-            self.dm.ML_fp_x[...,1: ,:,:] = M[...,-1]
-        elif self.Y:
-            #nvar,nader,Ny,Nx+1,p+1
-            self.dm.MR_fp_x[...,:-1,:] = M[..., 0]
-            self.dm.ML_fp_x[...,1: ,:] = M[...,-1]
-        else:
-            #nvar,nader,Nx+1
-            self.dm.MR_fp_x[...,:-1] = M[..., 0]
-            self.dm.ML_fp_x[...,1: ] = M[...,-1]
+        self.dm.MR_fp_x[cut(None,-1,shift)] = M[..., 0]
+        self.dm.ML_fp_x[cut(1, None,shift)] = M[...,-1]
     elif dim=="y":
-        if self.Z:
-            #nvar,nader,Nz,Ny+1,Nx,p+1,p+1
-            self.dm.MR_fp_y[...,:-1,:,:,:] = M[..., 0,:]
-            self.dm.ML_fp_y[...,1: ,:,:,:] = M[...,-1,:]
-        else:
-            #nvar,nader,Ny+1,Nx,p+1
-            self.dm.MR_fp_y[...,:-1,:,:] = M[..., 0,:]
-            self.dm.ML_fp_y[...,1: ,:,:] = M[...,-1,:]
+        self.dm.MR_fp_y[cut(None,-1,shift)] = M[..., 0,:]
+        self.dm.ML_fp_y[cut(1, None,shift)] = M[...,-1,:]
     elif dim=="z":
-        #nvar,nader,Nz+1,Ny,Nx,p+1,p+1
-        self.dm.MR_fp_z[...,:-1,:,:,:,:] = M[..., 0,:,:]
-        self.dm.ML_fp_z[...,1: ,:,:,:,:] = M[...,-1,:,:]
+        self.dm.MR_fp_z[cut(None,-1,shift)] = M[..., 0,:,:]
+        self.dm.ML_fp_z[cut(1, None,shift)] = M[...,-1,:,:]
 
 def apply_interfaces(self,M,dim):
+    shift=self.ndim+self.dims2[dim]-1
     if dim=="x":
-        #nvar,nader,Nz,Ny,Nx+1,p+1,p+1
-        if self.Z:
-            M[..., 0] = self.dm.MR_fp_x[...,:-1,:,:]
-            M[...,-1] = self.dm.ML_fp_x[...,1: ,:,:]
-        elif self.Y:
-            M[..., 0] = self.dm.MR_fp_x[...,:-1,:]
-            M[...,-1] = self.dm.ML_fp_x[...,1: ,:]
-        else:
-            M[..., 0] = self.dm.MR_fp_x[...,:-1]
-            M[...,-1] = self.dm.ML_fp_x[...,1: ]
+        M[..., 0] = self.dm.MR_fp_x[cut(None,-1,shift)]
+        M[...,-1] = self.dm.ML_fp_x[cut(1, None,shift)]
     elif dim=="y":
-        #nvar,nader,Nz,Ny+1,Nx,p+1,p+1
-        if self.Z:
-            M[..., 0,:] = self.dm.MR_fp_y[...,:-1,:,:,:]
-            M[...,-1,:] = self.dm.ML_fp_y[...,1: ,:,:,:]
-        else:
-            M[..., 0,:] = self.dm.MR_fp_y[...,:-1,:,:]
-            M[...,-1,:] = self.dm.ML_fp_y[...,1: ,:,:]
+        M[..., 0,:] = self.dm.MR_fp_y[cut(None,-1,shift)]
+        M[...,-1,:] = self.dm.ML_fp_y[cut(1, None,shift)]
     elif dim=="z":
-        #nvar,nader,Nz+1,Ny,Nx,p+1,p+1
-        M[..., 0,:,:] = self.dm.MR_fp_z[...,:-1,:,:,:,:]
-        M[...,-1,:,:] = self.dm.ML_fp_z[...,1: ,:,:,:,:]
+        M[..., 0,:,:] = self.dm.MR_fp_z[cut(None,-1,shift)]
+        M[...,-1,:,:] = self.dm.ML_fp_z[cut(1, None,shift)]
 
 
 def store_BC(self,BC_array,M,dim) -> None:
