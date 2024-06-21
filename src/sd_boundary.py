@@ -2,30 +2,20 @@ import numpy as np
 
 def cut(start,end,shift):
     return (Ellipsis,)+(slice(start,end),)+(slice(None),)*(shift)
+
+def indices(i,dim):
+    return (Ellipsis, i, slice(None), slice(None))[:(2+dim)]
    
 def store_interfaces(self,M,dim) -> None:
     shift=self.ndim+self.dims2[dim]-1
-    if dim=="x":
-        self.dm.MR_fp_x[cut(None,-1,shift)] = M[..., 0]
-        self.dm.ML_fp_x[cut(1, None,shift)] = M[...,-1]
-    elif dim=="y":
-        self.dm.MR_fp_y[cut(None,-1,shift)] = M[..., 0,:]
-        self.dm.ML_fp_y[cut(1, None,shift)] = M[...,-1,:]
-    elif dim=="z":
-        self.dm.MR_fp_z[cut(None,-1,shift)] = M[..., 0,:,:]
-        self.dm.ML_fp_z[cut(1, None,shift)] = M[...,-1,:,:]
+    axis = -(self.dims2[dim]+1)
+    self.MR_fp[dim][cut(None,-1,shift)] = M[indices( 0,self.dims2[dim])]
+    self.ML_fp[dim][cut(1 ,None,shift)] = M[indices(-1,self.dims2[dim])]
 
 def apply_interfaces(self,M,dim):
     shift=self.ndim+self.dims2[dim]-1
-    if dim=="x":
-        M[..., 0] = self.dm.MR_fp_x[cut(None,-1,shift)]
-        M[...,-1] = self.dm.ML_fp_x[cut(1, None,shift)]
-    elif dim=="y":
-        M[..., 0,:] = self.dm.MR_fp_y[cut(None,-1,shift)]
-        M[...,-1,:] = self.dm.ML_fp_y[cut(1, None,shift)]
-    elif dim=="z":
-        M[..., 0,:,:] = self.dm.MR_fp_z[cut(None,-1,shift)]
-        M[...,-1,:,:] = self.dm.ML_fp_z[cut(1, None,shift)]
+    M[indices( 0,self.dims2[dim])] = self.MR_fp[dim][cut(None,-1,shift)]
+    M[indices(-1,self.dims2[dim])] = self.ML_fp[dim][cut(1, None,shift)]
 
 
 def store_BC(self,BC_array,M,dim) -> None:
