@@ -1,86 +1,84 @@
 import numpy as np
+from typing import Tuple
+from itertools import repeat
+from sd_simulator import SD_Simulator
 
-def cut(start,end,shift):
+def cut(start: int,
+        end: int,
+        shift: int)->Tuple:
+    """
+    Returns a tuple to be used when slicing multidimensional arrays
+    """
     return (Ellipsis,)+(slice(start,end),)+(slice(None),)*(shift)
 
-def indices(i,dim):
-    return (Ellipsis, i, slice(None), slice(None))[:(2+dim)]
+def indices(i: int,
+            dim: int)->Tuple:
+    """
+    Returns a tuple to be used when slicing multidimensional arrays
+    """
+    return (Ellipsis, i)+ tuple(repeat(slice(None),dim))
+
+def indices2(i: int,
+            ndim: int,
+            dim: int):
+    """
+    Returns a tuple to be used when slicing multidimensional arrays
+    """
+    return indices(i,ndim-1) + (i,) + tuple(repeat(slice(None),dim))
    
-def store_interfaces(self,M,dim) -> None:
+def store_interfaces(self: SD_Simulator,
+                     M: np.ndarray,
+                     dim: str) -> None:
+    """
+    Stores the values of flux points at the extremes of elements(0,-1)
+    These arrays are then used to solve the Riemann problem
+    """
     shift=self.ndim+self.dims2[dim]-1
     axis = -(self.dims2[dim]+1)
     self.MR_fp[dim][cut(None,-1,shift)] = M[indices( 0,self.dims2[dim])]
     self.ML_fp[dim][cut(1 ,None,shift)] = M[indices(-1,self.dims2[dim])]
 
-def apply_interfaces(self,M,dim):
+def apply_interfaces(self: SD_Simulator,
+                     M: np.ndarray,
+                     dim: str):
+    """
+    Applies the values of flux points at the extremes of elements(0,-1)
+    This is done after the Riemann problem at element interfaces has been
+    solved. 
+    """
     shift=self.ndim+self.dims2[dim]-1
     M[indices( 0,self.dims2[dim])] = self.MR_fp[dim][cut(None,-1,shift)]
     M[indices(-1,self.dims2[dim])] = self.ML_fp[dim][cut(1, None,shift)]
 
-
-def store_BC(self,BC_array,M,dim) -> None:
-    #We store the intercell face/corner values to be used when performing
-    #the Riemann Solver
+def store_BC(self: SD_Simulator,
+             BC_array: np.ndarray,
+             M: np.ndarray,
+             dim: str) -> None:
+    """
+    Stores the solution at flux points for the extremes of the domain
+    These boundary arrays can then be communicated between domains
+    """    
     na=np.newaxis
+    idim = self.dims2[dim]
     if self.BC[dim] == "periodic":
-        BC_array[0] = slice_array(M,dim,-1,self.ndim)
-        BC_array[1] = slice_array(M,dim, 0,self.ndim)
+        BC_array[0] = M[indices2(-1,self.ndim,idim)]
+        BC_array[1] = M[indices2( 0,self.ndim,idim)]
     elif self.BC[dim] == "reflective":
-        BC_array[0] = slice_array(M,dim, 0,self.ndim)
-        BC_array[1] = slice_array(M,dim,-1,self.ndim)
+        BC_array[0] = M[indices2( 0,self.ndim,idim)]
+        BC_array[1] = M[indices2(-1,self.ndim,idim)]
         BC_array[:,self.dims2[dim]] = -BC_array[:,self.dims2[dim]]
     elif self.BC[dim] == "gradfree":
-        BC_array[0] = slice_array(M,dim, 0,self.ndim)
-        BC_array[1] = slice_array(M,dim,-1,self.ndim)
+        BC_array[0] = M[indices2( 0,self.ndim,idim)]
+        BC_array[1] = M[indices2(-1,self.ndim,idim)]
     else:
         raise("Undetermined boundary type")
                          
-def apply_BC(self,dim) -> None:
-    #Here we fill up the missing first column of U_L
-    #and the missing last column of U_R
-    if dim=="x":
-        #nvar,nader,Nz,Ny,Nx+1,p+1,p+1
-        if self.Z:
-            self.dm.ML_fp_x[..., 0,:,:] = self.dm.BC_fp_x[0]
-            self.dm.MR_fp_x[...,-1,:,:] = self.dm.BC_fp_x[1]
-        elif self.Y:
-            self.dm.ML_fp_x[..., 0,:] = self.dm.BC_fp_x[0]
-            self.dm.MR_fp_x[...,-1,:] = self.dm.BC_fp_x[1]
-        else:
-            self.dm.ML_fp_x[..., 0] = self.dm.BC_fp_x[0]
-            self.dm.MR_fp_x[...,-1] = self.dm.BC_fp_x[1]
-    elif dim=="y":
-        #nvar,nader,Nz,Ny+1,Nx,p+1,p+1
-        if self.Z:
-            self.dm.ML_fp_y[..., 0,:,:,:] = self.dm.BC_fp_y[0]
-            self.dm.MR_fp_y[...,-1,:,:,:] = self.dm.BC_fp_y[1]
-        else:
-            self.dm.ML_fp_y[..., 0,:,:] = self.dm.BC_fp_y[0]
-            self.dm.MR_fp_y[...,-1,:,:] = self.dm.BC_fp_y[1]
-    elif dim=="z":
-        #nvar,nader,Nz+1,Ny,Nx,p+1,p+1
-        self.dm.ML_fp_z[..., 0,:,:,:,:] = self.dm.BC_fp_z[0]
-        self.dm.MR_fp_z[...,-1,:,:,:,:] = self.dm.BC_fp_z[1]
-
-def slice_array(M,dim,idx,ndim):
-    if ndim==1:
-        if dim=="x":
-            return M[...,idx,idx]
-        else:
-            raise("Incorrect dimension")
-    elif ndim==2:
-        if dim=="x":
-            return M[...,idx,:,idx]
-        elif dim=="y":
-            return M[...,idx,:,idx,:]
-        else:
-            raise("Incorrect dimension")
-    elif ndim==3:
-        if dim=="x":
-            return M[...,idx,:,:,idx]
-        elif dim=="y":
-            return M[...,idx,:,:,idx,:]
-        elif dim=="z":
-            return M[...,idx,:,:,idx,:,:]
-        else:
-            raise("Incorrect dimension")
+def apply_BC(self: SD_Simulator,
+             dim: str) -> None:
+    """
+    Fills up the missing first column of M_L
+    and the missing last column of M_R
+    """
+    shift=self.ndim+self.dims2[dim]-1
+    self.ML_fp[dim][indices( 0,shift)] = self.BC_fp[dim][0]
+    self.MR_fp[dim][indices(-1,shift)] = self.BC_fp[dim][1]
