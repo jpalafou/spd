@@ -3,7 +3,6 @@ import sys
 import numpy as np
 import cupy as cp
 from collections import defaultdict
-from timeit import default_timer as timer
 
 from data_management import CupyLocation
 from data_management import GPUDataManager
@@ -16,7 +15,6 @@ from polynomials import intfromsol_matrix
 from polynomials import ader_matrix
 from polynomials import quadrature_mean
 from initial_conditions_3d import sine_wave
-import sd_ader
 import hydro
 from transforms import compute_A_from_B
 from transforms import compute_A_from_B_full
@@ -33,6 +31,7 @@ class SD_Simulator:
         Ny: int = 32,
         Nz: int = 32,
         Nghe: int = 1,
+        Nghc: int = 2,
         xlim: Tuple = (0,1),
         ylim: Tuple = (0,1),
         zlim: Tuple = (0,1),
@@ -55,6 +54,11 @@ class SD_Simulator:
         self.Z = ndim>2
         self.Ny = ((1,Ny) [self.Y]) 
         self.Nz = ((1,Nz) [self.Z])
+
+        self.N = defaultdict(list)
+        self.N["x"] = self.Nx
+        self.N["y"] = self.Ny
+        self.N["z"] = self.Nz
 
         self.Nghe = Nghe #Number of ghost element layers
         self.ndim = ndim
@@ -83,6 +87,11 @@ class SD_Simulator:
         self.xlen = xlim[1]-xlim[0]
         self.ylen = ylim[1]-ylim[0]
         self.zlen = zlim[1]-zlim[0]
+
+        self.len = defaultdict(list)
+        self.len["x"] = self.xlen
+        self.len["y"] = self.ylen
+        self.len["z"] = self.zlen
 
         self.dx = self.xlen/self.Nx
         self.dy = self.ylen/self.Ny
@@ -120,6 +129,11 @@ class SD_Simulator:
         self.y_fp = (np.ones(1)/2,self.x_fp) [self.Y]
         self.z_fp = (np.ones(1)/2,self.x_fp) [self.Z]
 
+        self.fp = defaultdict(list)
+        self.fp["x"] = self.x_fp
+        self.fp["y"] = self.y_fp
+        self.fp["z"] = self.z_fp
+
         # Lagrange matrices to perform interpolation between basis
         self.dm.sp_to_fp = lagrange_matrix(self.x_fp, self.x_sp)
         self.dm.fp_to_sp = lagrange_matrix(self.x_sp, self.x_fp)
@@ -143,7 +157,21 @@ class SD_Simulator:
         self.nx = p+1
         self.ny = (1,p+1) [self.Y]
         self.nz = (1,p+1) [self.Z]
-  
+
+        self.n = defaultdict(list)
+        self.n["x"] = self.nx
+        self.n["y"] = self.ny
+        self.n["z"] = self.nz
+
+        self.nghx = Nghc
+        self.nghy = (0,Nghc) [self.Y]
+        self.nghz = (0,Nghc) [self.Z]
+
+        self.ngh = defaultdict(list)
+        self.ngh["x"] = self.nghx
+        self.ngh["y"] = self.nghy
+        self.ngh["z"] = self.nghz
+
         self.mesh_cv = self.compute_mesh_cv()
         
         X_sp = xlim[0]+(np.arange(self.Nx)[:,na] + self.x_sp[na,:])*(self.xlen)/(self.Nx)
@@ -154,10 +182,31 @@ class SD_Simulator:
         self.dm.Y_sp = Y_sp.reshape(self.Ny,self.ny)
         self.dm.Z_sp = Z_sp.reshape(self.Nz,self.nz)
 
+        self.compute_positions()
+
         self.post_init()
         self.compute_dt()
         #print(f"dt = {self.dm.dt}")
 
+    def compute_positions(self):
+        # 1-D array storing the position of interfaces
+        self.faces = defaultdict(list)
+        self.dm.X_fp = np.ndarray((self.Nx * self.nx + self.nghx*2+1))
+        self.dm.Y_fp = np.ndarray((self.Ny * self.ny + self.nghy*2+1))
+        self.dm.Z_fp = np.ndarray((self.Nz * self.nz + self.nghz*2+1))
+        self.faces["x"] = self.dm.X_fp
+        self.faces["y"] = self.dm.Y_fp
+        self.faces["z"] = self.dm.Z_fp
+        for dim in self.dims2:
+            ngh = self.ngh[dim]
+            self.faces[dim][ngh :-ngh] = (
+            self.len[dim]/self.N[dim]*np.hstack(
+            (np.arange(self.N[dim]).repeat(self.n[dim]) + 
+             np.tile(self.fp[dim][:-1], self.N[dim]), self.N[dim]))
+            )
+            self.faces[dim][0:ngh] = -self.faces[dim][ngh+1:2*ngh+1][::-1]
+            self.faces[dim][-ngh:] = self.faces[dim][-(ngh+1)] + self.faces[dim][ngh+1:2*ngh+1]
+        
     def compute_mesh_cv(self) -> np.ndarray:
         na = np.newaxis
         Nx = self.Nx+2*self.Nghe
@@ -193,7 +242,6 @@ class SD_Simulator:
         self.dm.W_sp = self.compute_sp_from_cv(self.dm.W_cv)
         self.dm.U_sp = self.compute_conservatives(self.dm.W_sp)
         self.dm.U_cv = self.compute_conservatives(self.dm.W_cv)
-        sd_ader.ader_arrays(self)
 
     def domain_size(self):
         Nx = self.Nx*(self.nx)
@@ -385,49 +433,5 @@ class SD_Simulator:
         if self.Z:
             c += np.abs(W[self._vz_])+c_s
         c_max = np.max(c)
-        self.dm.dt = self.cfl_coeff*min(self.dx,min(self.dy,self.dz))/c_max/(self.p + 1)
+        self.dm.dt = self.cfl_coeff*min(self.dx,min(self.dy,self.dz))/c_max/(self.p + 1)  
 
-    def perform_update(self) -> bool:
-        self.n_step += 1
-        na = self.dm.xp.newaxis
-        
-        sd_ader.ader_predictor(self)
-        sd_ader.ader_update(self)
-       
-        self.time += self.dm.dt
-        return True
-    
-    def init_sim(self):
-        self.dm.switch_to(CupyLocation.device)
-        sd_ader.create_dicts(self)
-        self.execution_time = -timer() 
-
-    def end_sim(self):
-        self.dm.switch_to(CupyLocation.host)
-        self.execution_time += timer() 
-        sd_ader.create_dicts(self)
-        self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp)
-        self.dm.W_cv[...] = self.compute_cv_from_sp(self.dm.W_sp)
-
-    def perform_iterations(self, n_step: int) -> None:
-        self.init_sim()
-        for i in range(n_step):
-            self.compute_dt()
-            self.perform_update()
-        self.end_sim()
-     
-    def perform_time_evolution(self, t_end: float, nsteps=0) -> None:
-        self.init_sim()
-        while(self.time < t_end):
-            if not self.n_step % 100:
-                print(f"Time step #{self.n_step} (t = {self.time})",end="\r")
-            self.compute_dt()   
-            if(self.time + self.dm.dt >= t_end):
-                self.dm.dt = t_end-self.time
-            if(self.dm.dt < 1E-14):
-                print(f"dt={self.dm.dt}")
-                break
-            self.status = self.perform_update()
-        self.end_sim()            
-
-        

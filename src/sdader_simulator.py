@@ -7,6 +7,7 @@ from data_management import CupyLocation
 import sd_boundary as bc
 from initial_conditions import sine_wave
 import riemann_solver as rs
+from timeit import default_timer as timer
 
 class SDADER_Simulator(SD_Simulator):
     def __init__(self,*args, **kwargs):
@@ -44,6 +45,11 @@ class SDADER_Simulator(SD_Simulator):
             self.dm.BC_fp_z = self.array_BC(dim="z",ader=True)
 
     def create_dicts(self):
+        """
+        Creates dictonaries for the arrays used in the ADER time
+        integration. It enables writting generic functions for all
+        dimensions.
+        """
         self.M_ader_fp = defaultdict(list)
         self.F_ader_fp = defaultdict(list)
         self.MR_fp = defaultdict(list)
@@ -171,21 +177,28 @@ class SDADER_Simulator(SD_Simulator):
         self.ader_update()
         self.time += self.dm.dt
         return True
-    
-    def perform_iterations(self, n_step: int) -> None:
+
+    def init_sim(self):
         self.dm.switch_to(CupyLocation.device)
-        self.create_dicts(self)
+        self.create_dicts()
+        self.execution_time = -timer() 
+
+    def end_sim(self):
+        self.dm.switch_to(CupyLocation.host)
+        self.execution_time += timer() 
+        self.create_dicts()
+        self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp)
+        self.dm.W_cv[...] = self.compute_cv_from_sp(self.dm.W_sp)
+
+    def perform_iterations(self, n_step: int) -> None:
+        self.init_sim()
         for i in range(n_step):
             self.compute_dt()
             self.perform_update()
-        self.dm.switch_to(CupyLocation.host)
-        self.create_dicts(self)
-        self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp)
-        self.dm.W_cv[...] = self.compute_cv_from_sp(self.dm.W_sp)
+        self.end_sim()
      
     def perform_time_evolution(self, t_end: float, nsteps=0) -> None:
-        self.dm.switch_to(CupyLocation.device)
-        self.create_dicts()
+        self.init_sim()
         while(self.time < t_end):
             if not self.n_step % 100:
                 print(f"Time step #{self.n_step} (t = {self.time})",end="\r")
@@ -196,7 +209,4 @@ class SDADER_Simulator(SD_Simulator):
                 print(f"dt={self.dm.dt}")
                 break
             self.status = self.perform_update()
-        self.dm.switch_to(CupyLocation.host)
-        self.create_dicts()
-        self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp)
-        self.dm.W_cv[...] = self.compute_cv_from_sp(self.dm.W_sp)
+        self.end_sim()          
