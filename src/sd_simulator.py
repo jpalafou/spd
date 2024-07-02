@@ -190,10 +190,10 @@ class SD_Simulator:
 
     def compute_positions(self):
         # 1-D array storing the position of interfaces
-        self.faces = defaultdict(list)
         self.dm.X_fp = np.ndarray((self.Nx * self.nx + self.nghx*2+1))
         self.dm.Y_fp = np.ndarray((self.Ny * self.ny + self.nghy*2+1))
         self.dm.Z_fp = np.ndarray((self.Nz * self.nz + self.nghz*2+1))
+        self.faces = defaultdict(list)
         self.faces["x"] = self.dm.X_fp
         self.faces["y"] = self.dm.Y_fp
         self.faces["z"] = self.dm.Z_fp
@@ -206,6 +206,14 @@ class SD_Simulator:
             )
             self.faces[dim][0:ngh] = -self.faces[dim][ngh+1:2*ngh+1][::-1]
             self.faces[dim][-ngh:] = self.faces[dim][-(ngh+1)] + self.faces[dim][ngh+1:2*ngh+1]
+        
+        self.dm.X_cv = 0.5*(self.dm.X_fp[1:]-self.dm.X_fp[:-1])
+        self.dm.Y_cv = 0.5*(self.dm.Y_fp[1:]-self.dm.Y_fp[:-1])
+        self.dm.Z_cv = 0.5*(self.dm.Z_fp[1:]-self.dm.Z_fp[:-1])
+        self.centers = defaultdict(list)
+        self.centers["x"] = self.dm.X_cv
+        self.centers["y"] = self.dm.Y_cv
+        self.centers["z"] = self.dm.Z_cv
         
     def compute_mesh_cv(self) -> np.ndarray:
         na = np.newaxis
