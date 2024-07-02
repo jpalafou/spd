@@ -77,7 +77,16 @@ class SDADER_Simulator(SD_Simulator):
         if self.Z:
             self.MR_fp["z"] = self.dm.MR_fp_z
             self.ML_fp["z"] = self.dm.ML_fp_z
-            self.BC_fp["z"] = self.dm.BC_fp_z    
+            self.BC_fp["z"] = self.dm.BC_fp_z   
+
+        #Althogh these are created during the initialization of SD_Simulator,
+        #it is necessary to update them when things are moved to the GPU
+        self.faces["x"] = self.dm.X_fp
+        self.faces["y"] = self.dm.Y_fp 
+        self.faces["z"] = self.dm.Z_fp  
+        self.centers["x"] = self.dm.X_cv
+        self.centers["y"] = self.dm.Y_cv 
+        self.centers["z"] = self.dm.Z_cv
 
     def ader_string(self)->str:
         """
@@ -170,6 +179,26 @@ class SDADER_Simulator(SD_Simulator):
             self.riemann_solver_sd(self.ML_fp[dim], self.MR_fp[dim], vels, self._p_, self.gamma, self.min_c2, prims)
             bc.apply_interfaces(self,self.F_ader_fp[dim],dim)
 
+    ####################
+    ## Finite volume
+    ####################
+    def switch_to_finite_volume(self):
+        #Change to Finite Volume scheme
+        self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp)
+        self.dm.W_cv[...] = self.compute_primitives(self.dm.U_cv)
+
+        self.dm.U_cv = self.transpose_to_fv(self.dm.U_cv)
+        self.dm.W_cv = self.transpose_to_fv(self.dm.W_cv)
+        
+        for dim in self.dims2:
+            self.F_ader_fp[dim] = self.compute_A_from_B(self.F_ader_fp[dim],self.dm.sp_to_cv,dim,self.ndim)
+    
+  
+
+
+    ####################
+    ## Update functions
+    ####################
     def perform_update(self) -> bool:
         self.n_step += 1
         na = self.dm.xp.newaxis
