@@ -363,6 +363,15 @@ class SD_Simulator:
         if self.Y:
             shape += [self.p+1]
         return np.ndarray(shape)
+    
+    def array_FV(self,n,dim=None)->np.ndarray:
+        shape = [self.nvar] 
+        if self.Z:
+            shape += [self.Nz*n+(dim=="z")]
+        if self.Y:
+            shape += [self.Ny*n+(dim=="y")]
+        shape += [self.Nx*n+(dim=="x")]
+        return np.ndarray(shape)
 
     def crop(self,M)->np.ndarray:
         ngh = self.Nghe
@@ -392,6 +401,12 @@ class SD_Simulator:
     def compute_sp_from_dfp_z(self,ader=True):
         return self.compute_sp_from_dfp(self.dm.F_ader_fp_z,"z",ader=ader)/self.dz
     
+    def integrate_faces(self,M_fp,dim,ader=True):
+        for other_dim in self.dims2:
+            if dim != other_dim:
+                M_fp = compute_A_from_B(M_fp,self.dm.sp_to_cv,other_dim,self.ndim,ader=ader)
+        return M_fp
+
     def compute_primitives(self,U,**kwargs)->np.ndarray:
         return hydro.compute_primitives(
                 U,

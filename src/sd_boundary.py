@@ -1,30 +1,9 @@
 import numpy as np
 from typing import Tuple
-from itertools import repeat
 from sd_simulator import SD_Simulator
-
-def cut(start: int,
-        end: int,
-        shift: int)->Tuple:
-    """
-    Returns a tuple to be used when slicing multidimensional arrays
-    """
-    return (Ellipsis,)+(slice(start,end),)+(slice(None),)*(shift)
-
-def indices(i: int,
-            dim: int)->Tuple:
-    """
-    Returns a tuple to be used when slicing multidimensional arrays
-    """
-    return (Ellipsis, i)+ tuple(repeat(slice(None),dim))
-
-def indices2(i: int,
-            ndim: int,
-            dim: int):
-    """
-    Returns a tuple to be used when slicing multidimensional arrays
-    """
-    return indices(i,ndim-1) + (i,) + tuple(repeat(slice(None),dim))
+from slicing import cut
+from slicing import indices
+from slicing import indices2
    
 def store_interfaces(self: SD_Simulator,
                      M: np.ndarray,

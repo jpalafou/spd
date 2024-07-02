@@ -8,11 +8,13 @@ import sd_boundary as bc
 from initial_conditions import sine_wave
 import riemann_solver as rs
 from timeit import default_timer as timer
+from slicing import cut
 
 class SDADER_Simulator(SD_Simulator):
     def __init__(self,*args, **kwargs):
         super().__init__(*args, **kwargs)
         self.ader_arrays()
+        self.fv_arrays()
 
     def ader_arrays(self):
         """
@@ -43,6 +45,13 @@ class SDADER_Simulator(SD_Simulator):
             self.dm.ML_fp_z = self.array_RS(dim="z",ader=True)
             self.dm.MR_fp_z = self.array_RS(dim="z",ader=True)
             self.dm.BC_fp_z = self.array_BC(dim="z",ader=True)
+
+    def fv_arrays(self):
+        self.dm.F_faces_x = self.array_FV(self.p+1,dim="x")
+        if self.Y:
+            self.dm.F_faces_y =  self.array_FV(self.p+1,dim="y")
+        if self.Z:
+            self.dm.F_faces_z =  self.array_FV(self.p+1,dim="z")
 
     def create_dicts(self):
         """
@@ -77,7 +86,15 @@ class SDADER_Simulator(SD_Simulator):
         if self.Z:
             self.MR_fp["z"] = self.dm.MR_fp_z
             self.ML_fp["z"] = self.dm.ML_fp_z
-            self.BC_fp["z"] = self.dm.BC_fp_z   
+            self.BC_fp["z"] = self.dm.BC_fp_z
+
+        #Finite volume arrays
+        self.F_faces = defaultdict(list)
+        self.F_faces["x"] = self.dm.F_faces_x
+        if self.Y:
+            self.F_faces["y"] = self.dm.F_faces_y
+        if self.Z:
+            self.F_faces["z"] = self.dm.F_faces_z
 
         #Althogh these are created during the initialization of SD_Simulator,
         #it is necessary to update them when things are moved to the GPU
@@ -191,11 +208,21 @@ class SDADER_Simulator(SD_Simulator):
         self.dm.W_cv = self.transpose_to_fv(self.dm.W_cv)
         
         for dim in self.dims2:
-            self.F_ader_fp[dim] = self.compute_A_from_B(self.F_ader_fp[dim],self.dm.sp_to_cv,dim,self.ndim)
+            self.F_ader_fp[dim] = self.integrate_faces(self.F_ader_fp[dim],dim)
+
+    def store_high_order_fluxes(self,i_ader):
+        indices = [(0,1,2),(0,1,3,2,4),(0,1,4,2,5,3,6)]
+        shapes = [(self.nvar,self.Nx*self.nx),
+                  (self.nvar,self.Ny*self.ny,self.Nx*self.nx),
+                  (self.nvar,self.Nz*self.nz,self.Ny*self.ny,self.Nx*self.nx),]
+        for dim in self.dims2:
+            shift=self.dim[dim]-1
+            
+            self.F_faces[dim][cut(None,-1,shift)] = np.transpose(
+                self.F_ader_fp[dim][:,i_ader][cut(None,-1,shift)],indices[shift]
+                ).reshape(shapes[shift])
+            #self.F_faces[dim][cut(-1,None,shift)] = self.F_ader[dim][:,i_ader][:,-1,:,-1].reshape(s.nvar,s.Ny*(s.n+1))
     
-  
-
-
     ####################
     ## Update functions
     ####################
