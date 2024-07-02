@@ -356,25 +356,9 @@ class SD_Simulator:
             shape += [self.p+1]
         return np.ndarray(shape)
 
-    def crop_1d(self,M)->np.ndarray:
-        ngh = self.Nghe
-        return M[:,ngh:-ngh,...]
-    
-    def crop_2d(self,M)->np.ndarray:
-        ngh = self.Nghe
-        return M[:,ngh:-ngh,ngh:-ngh,...]
-    
-    def crop_3d(self,M)->np.ndarray:
-        ngh = self.Nghe
-        return M[:,ngh:-ngh,ngh:-ngh,ngh:-ngh,...]
-
     def crop(self,M)->np.ndarray:
-        if self.ndim==3:
-            return self.crop_3d(M)
-        if self.ndim==2:
-            return self.crop_2d(M)
-        if self.ndim==1:
-            return self.crop_1d(M)
+        ngh = self.Nghe
+        return M[(slice(None),)+(slice(ngh,-ngh),)*self.ndim+(Ellipsis,)]
     
     def compute_sp_from_cv(self,M_cv)->np.ndarray:
         return compute_A_from_B_full(M_cv,self.dm.cv_to_sp,self.ndim)
