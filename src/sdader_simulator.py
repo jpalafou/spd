@@ -8,7 +8,7 @@ import sd_boundary as bc
 from initial_conditions import sine_wave
 import riemann_solver as rs
 from timeit import default_timer as timer
-from slicing import cut
+from slicing import cut, indices, indices2
 
 class SDADER_Simulator(SD_Simulator):
     def __init__(self,*args, **kwargs):
@@ -211,17 +211,19 @@ class SDADER_Simulator(SD_Simulator):
             self.F_ader_fp[dim] = self.integrate_faces(self.F_ader_fp[dim],dim)
 
     def store_high_order_fluxes(self,i_ader):
-        indices = [(0,1,2),(0,1,3,2,4),(0,1,4,2,5,3,6)]
-        shapes = [(self.nvar,self.Nx*self.nx),
-                  (self.nvar,self.Ny*self.ny,self.Nx*self.nx),
-                  (self.nvar,self.Nz*self.nz,self.Ny*self.ny,self.Nx*self.nx),]
+        ndim=self.ndim
+        dims = [(0,1,2),(0,1,3,2,4),(0,1,4,2,5,3,6)]
+        shapes = [[self.nvar,self.Nx*self.nx],
+                  [self.nvar,self.Ny*self.ny,self.Nx*self.nx],
+                  [self.nvar,self.Nz*self.nz,self.Ny*self.ny,self.Nx*self.nx]]
         for dim in self.dims2:
-            shift=self.dim[dim]-1
-            
+            shift=self.dims2[dim]
+            shape=shapes[ndim-1].copy()
             self.F_faces[dim][cut(None,-1,shift)] = np.transpose(
-                self.F_ader_fp[dim][:,i_ader][cut(None,-1,shift)],indices[shift]
-                ).reshape(shapes[shift])
-            #self.F_faces[dim][cut(-1,None,shift)] = self.F_ader[dim][:,i_ader][:,-1,:,-1].reshape(s.nvar,s.Ny*(s.n+1))
+                self.F_ader_fp[dim][:,i_ader][cut(None,-1,shift)],dims[ndim-1]
+                ).reshape(shape)
+            shape.pop(ndim-shift)
+            self.F_faces[dim][indices(-1,shift)] = self.F_ader_fp[dim][:,i_ader][indices2(-1,ndim,shift)].reshape(shape)
     
     ####################
     ## Update functions
