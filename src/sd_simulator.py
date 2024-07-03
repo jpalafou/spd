@@ -294,6 +294,18 @@ class SD_Simulator:
             assert M.ndim == 7
             return np.transpose(M,(0,1,4,2,5,3,6)).reshape(M.shape[0],M.shape[1]*M.shape[4],M.shape[2]*M.shape[5],M.shape[3]*M.shape[6])   
 
+    def transpose_to_sd(self, M):
+        #nvar,Nznz,Nyny,Nxnx
+        #nvar,Nz,Ny,Nx,nz,ny,nx
+        if self.ndim==1:
+            return M.reshape(M.shape[0],self.Nx,self.nx)   
+        elif self.ndim==2:
+            return np.transpose(M.reshape(M.shape[0],self.Ny,self.ny,self.Nx,self.nx)
+                                ,(0, 1,3, 2,4))
+        else:
+            return np.transpose(M.reshape(M.shape[0],self.Nz,self.nz,self.Ny,self.ny,self.Nx,self.nx),
+                                (0, 1,3,5, 2,4,6))
+                                
     def array1d(self,px,ngh=0,ader=False) -> np.ndarray:
         shape = [self.nvar,self.nader] if ader else [self.nvar]
         shape += [self.Nx+2*ngh,px]
