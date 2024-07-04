@@ -289,10 +289,10 @@ class SD_Simulator:
             return M.reshape(M.shape[0],M.shape[1]*M.shape[2])   
         elif self.ndim==2:
             assert M.ndim == 5
-            return np.transpose(M,(0,1,3,2,4)).reshape(M.shape[0],M.shape[1]*M.shape[3],M.shape[2]*M.shape[4])  
+            return np.transpose(M,(0, 1,3, 2,4)).reshape(M.shape[0],M.shape[1]*M.shape[3],M.shape[2]*M.shape[4])  
         else:
             assert M.ndim == 7
-            return np.transpose(M,(0,1,4,2,5,3,6)).reshape(M.shape[0],M.shape[1]*M.shape[4],M.shape[2]*M.shape[5],M.shape[3]*M.shape[6])   
+            return np.transpose(M,(0, 1,4, 2,5, 3,6)).reshape(M.shape[0],M.shape[1]*M.shape[4],M.shape[2]*M.shape[5],M.shape[3]*M.shape[6])   
 
     def transpose_to_sd(self, M):
         #nvar,Nznz,Nyny,Nxnx
