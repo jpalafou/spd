@@ -61,6 +61,7 @@ class SD_Simulator:
         self.N["z"] = self.Nz
 
         self.Nghe = Nghe #Number of ghost element layers
+        self.Nghc = Nghc #Number of ghost cell layers
         self.ndim = ndim
         self.gamma=gamma
         self.cfl_coeff = cfl_coeff
@@ -188,6 +189,10 @@ class SD_Simulator:
         self.compute_dt()
         #print(f"dt = {self.dm.dt}")
 
+    def shape(self,dim):
+        dim = self.dims2[dim]
+        return (None,)*(self.ndim-dim)+(slice(None),)+(None,)*(dim)
+    
     def compute_positions(self):
         # 1-D array storing the position of interfaces
         self.dm.X_fp = np.ndarray((self.Nx * self.nx + self.nghx*2+1))
@@ -207,14 +212,30 @@ class SD_Simulator:
             self.faces[dim][0:ngh] = -self.faces[dim][ngh+1:2*ngh+1][::-1]
             self.faces[dim][-ngh:] = self.faces[dim][-(ngh+1)] + self.faces[dim][ngh+1:2*ngh+1]
         
-        self.dm.X_cv = 0.5*(self.dm.X_fp[1:]-self.dm.X_fp[:-1])
-        self.dm.Y_cv = 0.5*(self.dm.Y_fp[1:]-self.dm.Y_fp[:-1])
-        self.dm.Z_cv = 0.5*(self.dm.Z_fp[1:]-self.dm.Z_fp[:-1])
+        self.dm.X_cv = 0.5*(self.dm.X_fp[1:]+self.dm.X_fp[:-1])
+        self.dm.Y_cv = 0.5*(self.dm.Y_fp[1:]+self.dm.Y_fp[:-1])
+        self.dm.Z_cv = 0.5*(self.dm.Z_fp[1:]+self.dm.Z_fp[:-1])
         self.centers = defaultdict(list)
         self.centers["x"] = self.dm.X_cv
         self.centers["y"] = self.dm.Y_cv
         self.centers["z"] = self.dm.Z_cv
-        
+
+        self.dm.dx_fp = (self.dm.X_fp[1:]+self.dm.X_fp[:-1])[shape("x")]
+        self.dm.dx_cv = (self.dm.X_cv[1:]+self.dm.X_cv[:-1])[shape("x")]
+        self.dm.dy_fp = (self.dm.Y_fp[1:]+self.dm.Y_fp[:-1])[shape("y")]
+        self.dm.dy_cv = (self.dm.Y_cv[1:]+self.dm.Y_cv[:-1])[shape("y")]
+        self.dm.dz_fp = (self.dm.Z_fp[1:]+self.dm.Z_fp[:-1])[shape("z")]
+        self.dm.dz_cv = (self.dm.Z_cv[1:]+self.dm.Z_cv[:-1])[shape("z")]
+
+        self.h_fp = defaultdict(list)
+        self.h_cv = defaultdict(list)
+        self.h_fp["x"] = self.dm.dx_fp
+        self.h_cv["x"] = self.dm.dx_cv
+        self.h_fp["y"] = self.dm.dy_fp
+        self.h_cv["y"] = self.dm.dy_cv
+        self.h_fp["z"] = self.dm.dz_fp
+        self.h_cv["z"] = self.dm.dz_cv
+    
     def compute_mesh_cv(self) -> np.ndarray:
         na = np.newaxis
         Nx = self.Nx+2*self.Nghe

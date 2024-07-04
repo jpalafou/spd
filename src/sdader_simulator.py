@@ -109,6 +109,13 @@ class SDADER_Simulator(SD_Simulator):
         self.centers["y"] = self.dm.Y_cv 
         self.centers["z"] = self.dm.Z_cv
 
+        self.h_fp["x"] = self.dm.dx_fp
+        self.h_cv["x"] = self.dm.dx_cv
+        self.h_fp["y"] = self.dm.dy_fp
+        self.h_cv["y"] = self.dm.dy_cv
+        self.h_fp["z"] = self.dm.dz_fp
+        self.h_cv["z"] = self.dm.dz_cv
+
     def ader_string(self)->str:
         """
         Returns a string to be used in the
@@ -224,7 +231,7 @@ class SDADER_Simulator(SD_Simulator):
     def store_high_order_fluxes(self,i_ader):
         ndim=self.ndim
         dims  = [(0,1,2),(0,1,3,2,4),(0,1,4,2,5,3,6)]
-        dims2 = [(0,1),(0,1,2),(0,1,3,2,4)]
+        dims2 = [(0),(0,1,2),(0,1,3,2,4)]
         shapes = [[self.nvar,self.Nx*self.nx],
                   [self.nvar,self.Ny*self.ny,self.Nx*self.nx],
                   [self.nvar,self.Nz*self.nz,self.Ny*self.ny,self.Nx*self.nx]]
@@ -257,8 +264,8 @@ class SDADER_Simulator(SD_Simulator):
             dt = self.dm.dt*self.dm.w_tp[i_ader]
             self.store_high_order_fluxes(i_ader)
             self.fv_apply_fluxes(dt)
-        self.switch_to_high_order()    
-    
+        self.switch_to_high_order()
+
     ####################
     ## Update functions
     ####################
