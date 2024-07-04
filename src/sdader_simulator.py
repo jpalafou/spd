@@ -11,8 +11,12 @@ from timeit import default_timer as timer
 from slicing import cut, indices, indices2
 
 class SDADER_Simulator(SD_Simulator):
-    def __init__(self,*args, **kwargs):
+    def __init__(self,
+                 update = "SD",
+                 *args,
+                 **kwargs):
         super().__init__(*args, **kwargs)
+        self.update = update
         self.ader_arrays()
         self.fv_arrays()
 
@@ -208,11 +212,19 @@ class SDADER_Simulator(SD_Simulator):
         self.dm.W_cv = self.transpose_to_fv(self.dm.W_cv)
         
         for dim in self.dims2:
-            self.F_ader_fp[dim] = self.integrate_faces(self.F_ader_fp[dim],dim)
+            self.F_ader_fp[dim][...] = self.integrate_faces(self.F_ader_fp[dim],dim)
+
+    def switch_to_high_order(self):
+        #Change back to High-Order scheme
+        self.dm.U_cv = self.transpose_to_sd(self.dm.U_cv)
+        self.dm.W_cv = self.transpose_to_sd(self.dm.W_cv)
+        self.dm.U_sp[...] = self.compute_sp_from_cv(self.dm.U_cv)
+        self.dm.W_sp[...] = self.compute_primitives(self.dm.U_sp)
 
     def store_high_order_fluxes(self,i_ader):
         ndim=self.ndim
-        dims = [(0,1,2),(0,1,3,2,4),(0,1,4,2,5,3,6)]
+        dims  = [(0,1,2),(0,1,3,2,4),(0,1,4,2,5,3,6)]
+        dims2 = [(0,1),(0,1,2),(0,1,3,2,4)]
         shapes = [[self.nvar,self.Nx*self.nx],
                   [self.nvar,self.Ny*self.ny,self.Nx*self.nx],
                   [self.nvar,self.Nz*self.nz,self.Ny*self.ny,self.Nx*self.nx]]
@@ -223,16 +235,40 @@ class SDADER_Simulator(SD_Simulator):
                 self.F_ader_fp[dim][:,i_ader][cut(None,-1,shift)],dims[ndim-1]
                 ).reshape(shape)
             shape.pop(ndim-shift)
-            self.F_faces[dim][indices(-1,shift)] = self.F_ader_fp[dim][:,i_ader][indices2(-1,ndim,shift)].reshape(shape)
+            self.F_faces[dim][indices(-1,shift)] = np.transpose(
+                self.F_ader_fp[dim][:,i_ader][indices2(-1,ndim,shift)],dims2[ndim-1]).reshape(shape)
+    
+    def fv_apply_fluxes(self,dt):
+        dUdt = self.dm.U_cv.copy()*0
+        for dim in self.dims2:
+            ndim = self.ndim
+            ngh = self.ngh[dim]
+            shift=self.dims2[dim]
+            dx = self.faces[dim][ngh+1:-ngh] - self.faces[dim][ngh:-(ngh+1)]
+            dx = dx[(None,)*(ndim-shift)+(slice(None),)+(None,)*(shift)]
+            dUdt += (self.F_faces[dim][cut(1,None,shift)]
+                             -self.F_faces[dim][cut(None,-1,shift)])/dx
+        
+        self.dm.U_cv -= dUdt*dt
+
+    def fv_update(self):
+        self.switch_to_finite_volume()
+        for i_ader in range(self.nader):
+            dt = self.dm.dt*self.dm.w_tp[i_ader]
+            self.store_high_order_fluxes(i_ader)
+            self.fv_apply_fluxes(dt)
+        self.switch_to_high_order()    
     
     ####################
     ## Update functions
     ####################
     def perform_update(self) -> bool:
         self.n_step += 1
-        na = self.dm.xp.newaxis
         self.ader_predictor()
-        self.ader_update()
+        if self.update=="SD":
+            self.ader_update()
+        else:
+            self.fv_update()
         self.time += self.dm.dt
         return True
 
