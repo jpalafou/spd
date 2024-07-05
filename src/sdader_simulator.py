@@ -29,30 +29,16 @@ class SDADER_Simulator(FV_Simulator):
         Allocate arrays to be used in the ADER time integration
         """
         self.dm.U_ader_sp = self.array_sp(ader=True)
-        #Conservative/Primitive varibles at flux points
-        #Conservative fluxes at flux points
-        self.dm.M_ader_fp_x = self.array_fp(dims="x",ader=True)
-        self.dm.F_ader_fp_x = self.array_fp(dims="x",ader=True)
-        if self.Y:
-            self.dm.M_ader_fp_y = self.array_fp(dims="y",ader=True)
-            self.dm.F_ader_fp_y = self.array_fp(dims="y",ader=True)
-        if self.Z:
-            self.dm.M_ader_fp_z = self.array_fp(dims="z",ader=True)
-            self.dm.F_ader_fp_z = self.array_fp(dims="z",ader=True)
-
-        #Arrays to Solve Riemann problem at the interface between
-        #elements
-        self.dm.ML_fp_x = self.array_RS(dim="x",ader=True)
-        self.dm.MR_fp_x = self.array_RS(dim="x",ader=True)
-        self.dm.BC_fp_x = self.array_BC(dim="x",ader=True)
-        if self.Y:
-            self.dm.ML_fp_y = self.array_RS(dim="y",ader=True)
-            self.dm.MR_fp_y = self.array_RS(dim="y",ader=True)
-            self.dm.BC_fp_y = self.array_BC(dim="y",ader=True)
-        if self.Z:
-            self.dm.ML_fp_z = self.array_RS(dim="z",ader=True)
-            self.dm.MR_fp_z = self.array_RS(dim="z",ader=True)
-            self.dm.BC_fp_z = self.array_BC(dim="z",ader=True)
+        for dim in self.dims2:
+            #Conservative/Primitive varibles at flux points
+            self.dm.__setattr__(f"M_ader_fp_{dim}",self.array_fp(dims=dim,ader=True))
+            #Conservative fluxes at flux points
+            self.dm.__setattr__(f"F_ader_fp_{dim}",self.array_fp(dims=dim,ader=True))
+            #Arrays to Solve Riemann problem at the interface between elements
+            self.dm.__setattr__(f"ML_fp_{dim}",self.array_RS(dim=dim,ader=True))
+            self.dm.__setattr__(f"MR_fp_{dim}",self.array_RS(dim=dim,ader=True))
+            #Arrays to communicate boundary values
+            self.dm.__setattr__(f"BC_fp_{dim}",self.array_BC(dim=dim,ader=True))
 
     def create_dicts(self):
         """
@@ -65,7 +51,7 @@ class SDADER_Simulator(FV_Simulator):
             self.__setattr__(name,{})
             for dim in self.dims2:
                 self.__getattribute__(name)[dim] = self.dm.__getattribute__(f"{name}_{dim}")
-                
+
         if self.update=="FV":
             self.create_dicts_fv()
 
