@@ -3,6 +3,7 @@ import sys
 import numpy as np
 from collections import defaultdict
 from sd_simulator import SD_Simulator
+from muscl import FV_Simulator
 from data_management import CupyLocation
 import sd_boundary as bc
 from initial_conditions import sine_wave
@@ -10,15 +11,18 @@ import riemann_solver as rs
 from timeit import default_timer as timer
 from slicing import cut, indices, indices2
 
-class SDADER_Simulator(SD_Simulator):
+class SDADER_Simulator(FV_Simulator):
     def __init__(self,
                  update = "SD",
+                 FB = False,
                  *args,
                  **kwargs):
         super().__init__(*args, **kwargs)
         self.update = update
+        self.FB = FB
         self.ader_arrays()
-        self.fv_arrays()
+        if update=="FV":
+            self.fv_arrays()
 
     def ader_arrays(self):
         """
@@ -49,13 +53,6 @@ class SDADER_Simulator(SD_Simulator):
             self.dm.ML_fp_z = self.array_RS(dim="z",ader=True)
             self.dm.MR_fp_z = self.array_RS(dim="z",ader=True)
             self.dm.BC_fp_z = self.array_BC(dim="z",ader=True)
-
-    def fv_arrays(self):
-        self.dm.F_faces_x = self.array_FV(self.p+1,dim="x")
-        if self.Y:
-            self.dm.F_faces_y =  self.array_FV(self.p+1,dim="y")
-        if self.Z:
-            self.dm.F_faces_z =  self.array_FV(self.p+1,dim="z")
 
     def create_dicts(self):
         """
@@ -92,29 +89,8 @@ class SDADER_Simulator(SD_Simulator):
             self.ML_fp["z"] = self.dm.ML_fp_z
             self.BC_fp["z"] = self.dm.BC_fp_z
 
-        #Finite volume arrays
-        self.F_faces = defaultdict(list)
-        self.F_faces["x"] = self.dm.F_faces_x
-        if self.Y:
-            self.F_faces["y"] = self.dm.F_faces_y
-        if self.Z:
-            self.F_faces["z"] = self.dm.F_faces_z
-
-        #Althogh these are created during the initialization of SD_Simulator,
-        #it is necessary to update them when things are moved to the GPU
-        self.faces["x"] = self.dm.X_fp
-        self.faces["y"] = self.dm.Y_fp 
-        self.faces["z"] = self.dm.Z_fp  
-        self.centers["x"] = self.dm.X_cv
-        self.centers["y"] = self.dm.Y_cv 
-        self.centers["z"] = self.dm.Z_cv
-
-        self.h_fp["x"] = self.dm.dx_fp
-        self.h_cv["x"] = self.dm.dx_cv
-        self.h_fp["y"] = self.dm.dy_fp
-        self.h_cv["y"] = self.dm.dy_cv
-        self.h_fp["z"] = self.dm.dz_fp
-        self.h_cv["z"] = self.dm.dz_cv
+        if self.update=="FV":
+            self.create_dicts_fv()
 
     def ader_string(self)->str:
         """
@@ -262,7 +238,10 @@ class SDADER_Simulator(SD_Simulator):
         self.switch_to_finite_volume()
         for i_ader in range(self.nader):
             dt = self.dm.dt*self.dm.w_tp[i_ader]
-            self.store_high_order_fluxes(i_ader)
+            if self.FB:
+                self.compute_second_order_fluxes(i_ader)
+            else:
+                self.store_high_order_fluxes(i_ader)
             self.fv_apply_fluxes(dt)
         self.switch_to_high_order()
 
