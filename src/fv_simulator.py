@@ -60,40 +60,20 @@ class FV_Simulator(SD_Simulator):
         self.dm.BC_fv_z =  self.array_FV_BC(dim="z")
 
     def create_dicts_fv(self):
-        #Althogh these are created during the initialization of SD_Simulator,
-        #it is necessary to update them when things are moved to the GPU
-        self.faces["x"] = self.dm.X_fp
-        self.faces["y"] = self.dm.Y_fp 
-        self.faces["z"] = self.dm.Z_fp  
-        self.centers["x"] = self.dm.X_cv
-        self.centers["y"] = self.dm.Y_cv 
-        self.centers["z"] = self.dm.Z_cv
-
-        self.h_fp["x"] = self.dm.dx_fp
-        self.h_cv["x"] = self.dm.dx_cv
-        self.h_fp["y"] = self.dm.dy_fp
-        self.h_cv["y"] = self.dm.dy_cv
-        self.h_fp["z"] = self.dm.dz_fp
-        self.h_cv["z"] = self.dm.dz_cv
-
         self.F_faces = defaultdict(list)
         self.MR_faces = defaultdict(list)
         self.ML_faces = defaultdict(list)
         self.BC_fv = defaultdict(list)
-        self.F_faces["x"] = self.dm.F_faces_x
-        self.MR_faces["x"] = self.dm.MR_faces_x
-        self.ML_faces["x"] = self.dm.ML_faces_x
-        self.BC_fv["x"] = self.dm.BC_fv_x
-        if self.Y:
-            self.F_faces["y"] = self.dm.F_faces_y
-            self.MR_faces["y"] = self.dm.MR_faces_y
-            self.ML_faces["y"] = self.dm.ML_faces_y
-            self.BC_fv["y"] = self.dm.BC_fv_y
-        if self.Z:
-            self.F_faces["z"] = self.dm.F_faces_z
-            self.MR_faces["z"] = self.dm.MR_faces_z
-            self.ML_faces["z"] = self.dm.ML_faces_z
-            self.BC_fv["z"] = self.dm.BC_fv_z
+        
+        for dim in self.dims2:
+            self.faces[dim] = self.dm.__getattribute__(f"{dim.upper()}_fp")
+            self.centers[dim] = self.dm.__getattribute__(f"{dim.upper()}_cv")
+            self.h_fp[dim] = self.dm.__getattribute__(f"d{dim}_fp")
+            self.h_cv[dim] = self.dm.__getattribute__(f"d{dim}_cv")
+            self.F_faces[dim] = self.dm.__getattribute__(f"F_faces_{dim}")
+            self.MR_faces[dim] = self.dm.__getattribute__(f"MR_faces_{dim}")
+            self.ML_faces[dim] = self.dm.__getattribute__(f"ML_faces_{dim}")
+            self.BC_fv[dim] = self.dm.__getattribute__(f"BC_fv_{dim}")
 
     def compute_fv_fluxes(self):
         return muscl.compute_second_order_fluxes(self)

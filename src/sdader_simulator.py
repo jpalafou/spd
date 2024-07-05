@@ -60,35 +60,12 @@ class SDADER_Simulator(FV_Simulator):
         integration. It enables writting generic functions for all
         dimensions.
         """
-        self.M_ader_fp = defaultdict(list)
-        self.F_ader_fp = defaultdict(list)
-        self.MR_fp = defaultdict(list)
-        self.ML_fp = defaultdict(list)
-        self.BC_fp = defaultdict(list)
-
-        self.M_ader_fp["x"] = self.dm.M_ader_fp_x
-        self.F_ader_fp["x"] = self.dm.F_ader_fp_x
-        if self.Y:
-            self.M_ader_fp["y"] = self.dm.M_ader_fp_y
-            self.F_ader_fp["y"] = self.dm.F_ader_fp_y
-        if self.Z:
-            self.M_ader_fp["z"] = self.dm.M_ader_fp_z
-            self.F_ader_fp["z"] = self.dm.F_ader_fp_z
-
-        #Arrays to Solve Riemann problem at the interface between
-        #elements
-        self.MR_fp["x"] = self.dm.MR_fp_x
-        self.ML_fp["x"] = self.dm.ML_fp_x
-        self.BC_fp["x"] = self.dm.BC_fp_x
-        if self.Y:
-            self.MR_fp["y"] = self.dm.MR_fp_y
-            self.ML_fp["y"] = self.dm.ML_fp_y
-            self.BC_fp["y"] = self.dm.BC_fp_y
-        if self.Z:
-            self.MR_fp["z"] = self.dm.MR_fp_z
-            self.ML_fp["z"] = self.dm.ML_fp_z
-            self.BC_fp["z"] = self.dm.BC_fp_z
-
+        names = ["M_ader_fp","F_ader_fp","MR_fp","ML_fp","BC_fp"]
+        for name in names:
+            self.__setattr__(name,{})
+            for dim in self.dims2:
+                self.__getattribute__(name)[dim] = self.dm.__getattribute__(f"{name}_{dim}")
+                
         if self.update=="FV":
             self.create_dicts_fv()
 
