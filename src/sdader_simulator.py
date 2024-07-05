@@ -3,7 +3,7 @@ import sys
 import numpy as np
 from collections import defaultdict
 from sd_simulator import SD_Simulator
-from muscl import FV_Simulator
+from fv_simulator import FV_Simulator
 from data_management import CupyLocation
 import sd_boundary as bc
 from initial_conditions import sine_wave
@@ -239,7 +239,7 @@ class SDADER_Simulator(FV_Simulator):
         for i_ader in range(self.nader):
             dt = self.dm.dt*self.dm.w_tp[i_ader]
             if self.FB:
-                self.compute_second_order_fluxes(i_ader)
+                self.compute_fv_fluxes()
             else:
                 self.store_high_order_fluxes(i_ader)
             self.fv_apply_fluxes(dt)
