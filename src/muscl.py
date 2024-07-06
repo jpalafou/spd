@@ -3,8 +3,7 @@ import sys
 import numpy as np
 import cupy as cp
 from itertools import repeat
-from sd_simulator import SD_Simulator
-import fv_boundary as bc
+from simulator import Simulator
 
 from slicing import cut
 
@@ -24,7 +23,7 @@ def moncen(dU_L,dU_R,dx_L,dx_R,dx_M):
     slope = np.sign(dU_C)*np.minimum(slope,np.abs(dU_C))
     return np.where(dU_L*dU_R>=0,slope,0)     
 
-def compute_slopes(self: SD_Simulator, dU, dim):
+def compute_slopes(self: Simulator, dU, dim):
         if self.slope_limiter == "minmod":
             return minmod(dU[cut(None,-1,dim)],dU[cut(1,None,dim)])
 
@@ -37,20 +36,20 @@ def compute_slopes(self: SD_Simulator, dU, dim):
                       h_cv[cut(1,None,dim)],
                       h_fp[cut(1,-1,dim)])
 
-def compute_second_order_fluxes(self: SD_Simulator, prims=True):
+def compute_second_order_fluxes(self: Simulator, prims=True):
     ngh = self.Nghc
     self.dm.M_fv[...]  = 0
     #Copy W_cv to active region of M_fv
-    self.dm.M_fv[(Ellipsis,)+tuple(repeat(slice(ngh,-ngh),self.ndim))] = self.dm.W_cv
+    self.fill_active_region(self.compute_primitives(self.dm.U_cv))
 
     for dim in self.dims2:
         shift=self.dims2[dim]
         vels = np.roll(self.vels,-shift)
         h_cv = self.h_cv[dim]
         h_fp = self.h_fp[dim]
-        bc.store_BC(self,self.dm.M_fv,dim)
-        #Comms here
-        bc.apply_BC(self,dim)
+
+        self.fv_Boundaries(self.dm.M_fv,dim)
+        
         dM = (self.dm.M_fv[cut(1,None,shift)] - self.dm.M_fv[cut(None,-1,shift)])/h_cv
         dMh = compute_slopes(self,dM,shift)    
         S = 0.5*dMh*h_fp[cut(1,-1,shift)] #Slope*h/2  
@@ -58,5 +57,5 @@ def compute_second_order_fluxes(self: SD_Simulator, prims=True):
         #UR = U - SlopeC*h/2, UL = U + SlopeC*h/2
         self.MR_faces[dim][...] = self.dm.M_fv[self.crop_fv(ngh,-1,shift)] - S[self.crop_fv( 1,None,shift)]
         self.ML_faces[dim][...] = self.dm.M_fv[self.crop_fv(1,-ngh,shift)] + S[self.crop_fv(None,-1,shift)] 
-        self.riemann_solver_fv(self.ML_faces[dim], self.MR_faces[dim], vels, self._p_, self.gamma, self.min_c2, prims)  
-        self.F_faces[dim] = self.MR_faces[dim]
+        self.riemann_solver_fv(self.ML_faces[dim], self.MR_faces[dim], vels, self._p_, self.gamma, self.min_c2, prims)
+        

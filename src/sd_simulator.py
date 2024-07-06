@@ -4,129 +4,35 @@ import numpy as np
 import cupy as cp
 from collections import defaultdict
 
-from data_management import CupyLocation
-from data_management import GPUDataManager
+from simulator import Simulator
 from polynomials import gauss_legendre_quadrature
 from polynomials import solution_points
 from polynomials import flux_points
 from polynomials import lagrange_matrix
 from polynomials import lagrangeprime_matrix
 from polynomials import intfromsol_matrix
-from polynomials import ader_matrix
 from polynomials import quadrature_mean
-from initial_conditions_3d import sine_wave
 import hydro
 from transforms import compute_A_from_B
 from transforms import compute_A_from_B_full
 
 import riemann_solver as rs
 
-class SD_Simulator:
+class SD_Simulator(Simulator):
     def __init__(
         self,
-        init_fct: Callable = sine_wave,
-        p: int =  1, 
-        m: int = -1,
-        Nx: int = 32,
-        Ny: int = 32,
-        Nz: int = 32,
-        Nghe: int = 1,
-        Nghc: int = 2,
-        xlim: Tuple = (0,1),
-        ylim: Tuple = (0,1),
-        zlim: Tuple = (0,1),
-        ndim: int = 3,
-        gamma: float = 1.4,
-        cfl_coeff: float = 0.8,
-        min_c2: float = 1E-10,
-        use_cupy: bool = True,
-        BC: Tuple = ("periodic","periodic","periodic"),
         riemann_solver_sd: Callable = rs.llf,
+        *args,
+        **kwargs
     ):
-        self.init_fct = init_fct
-        if m==-1:
-            #By default m=p
-            m=p
-        self.p = p #Space order
-        self.m = m #Time  order
-        self.Nx = Nx
-        self.Y = ndim>1
-        self.Z = ndim>2
-        self.Ny = ((1,Ny) [self.Y]) 
-        self.Nz = ((1,Nz) [self.Z])
-
-        self.N = defaultdict(list)
-        self.N["x"] = self.Nx
-        self.N["y"] = self.Ny
-        self.N["z"] = self.Nz
-
-        self.Nghe = Nghe #Number of ghost element layers
-        self.Nghc = Nghc #Number of ghost cell layers
-        self.ndim = ndim
-        self.gamma=gamma
-        self.cfl_coeff = cfl_coeff
-        self.min_c2 = min_c2
+        super().__init__(*args, **kwargs)
         self.riemann_solver_sd = riemann_solver_sd
+        self.x, self.w = gauss_legendre_quadrature(0.0, 1.0, self.p)
 
-        assert len(BC) >= ndim
-        self.BC = defaultdict(list)
-        self.dims = defaultdict(list)
-        self.dims2 = defaultdict(list)
-        dims = ["x","y","z"]
-        for dim in range(ndim):
-            self.dims[dim] = dims[dim]
-            self.dims2[dims[dim]] = dim
-            self.BC[dims[dim]] = BC[0]     
-
-        self.dm = GPUDataManager(use_cupy)
-        
-        self.xlim = xlim
-        self.ylim = ylim
-        self.zlim = zlim
-        self.time = 0.0
-        
-        self.xlen = xlim[1]-xlim[0]
-        self.ylen = ylim[1]-ylim[0]
-        self.zlen = zlim[1]-zlim[0]
-
-        self.len = defaultdict(list)
-        self.len["x"] = self.xlen
-        self.len["y"] = self.ylen
-        self.len["z"] = self.zlen
-
-        self.dx = self.xlen/self.Nx
-        self.dy = self.ylen/self.Ny
-        self.dz = self.zlen/self.Nz
-
-        self.n_step = 0
-        
-        nvar=0
-        self._d_  = nvar
-        nvar+=1
-        self._vx_ = nvar
-        nvar+=1
-        if self.Y: 
-            self._vy_ = nvar
-            nvar+=1
-        else:
-            self._vy_ = -1
-        if self.Z: 
-            self._vz_ = nvar
-            nvar+=1
-        else:
-            self._vz_ = -1
-        self._p_  = nvar
-        nvar+=1
-        assert nvar == 2 + self.ndim
-        self.nvar = nvar
-        self.vels=np.array([self._vx_,self._vy_,self._vz_])[:self.ndim]
-
-        self.x, self.w = gauss_legendre_quadrature(0.0, 1.0, p)
-
-        self.x_sp = solution_points(0.0, 1.0, p)
+        self.x_sp = solution_points(0.0, 1.0, self.p)
         self.y_sp = (np.ones(1)/2,self.x_sp) [self.Y]
         self.z_sp = (np.ones(1)/2,self.x_sp) [self.Z]
-        self.x_fp = flux_points(0.0, 1.0, p)
+        self.x_fp = flux_points(0.0, 1.0, self.p)
         self.y_fp = (np.ones(1)/2,self.x_fp) [self.Y]
         self.z_fp = (np.ones(1)/2,self.x_fp) [self.Z]
 
@@ -145,95 +51,19 @@ class SD_Simulator:
         self.dm.fp_to_cv = intfromsol_matrix(self.x_fp, self.x_fp)
         self.dm.cv_to_sp = np.linalg.inv(self.dm.sp_to_cv)
         
-        # ADER matrix.
-        self.dm.x_tp, self.dm.w_tp = gauss_legendre_quadrature(0.0, 1.0, self.m + 1)
-        ader = ader_matrix(self.dm.x_tp, self.dm.w_tp, 1.0)
-        self.dm.invader = np.linalg.inv(ader)
-        self.dm.invader = np.einsum("p,np->np",self.dm.w_tp,self.dm.invader)
-        #number of time slices
-        self.nader = self.m+1
-        
-        na =  np.newaxis
-        
-        self.nx = p+1
-        self.ny = (1,p+1) [self.Y]
-        self.nz = (1,p+1) [self.Z]
+        self.nx = self.p+1
+        self.ny = (1,self.p+1) [self.Y]
+        self.nz = (1,self.p+1) [self.Z]
 
         self.n = defaultdict(list)
         self.n["x"] = self.nx
         self.n["y"] = self.ny
         self.n["z"] = self.nz
 
-        self.nghx = Nghc
-        self.nghy = (0,Nghc) [self.Y]
-        self.nghz = (0,Nghc) [self.Z]
-
-        self.ngh = defaultdict(list)
-        self.ngh["x"] = self.nghx
-        self.ngh["y"] = self.nghy
-        self.ngh["z"] = self.nghz
-
         self.mesh_cv = self.compute_mesh_cv()
-        
-        X_sp = xlim[0]+(np.arange(self.Nx)[:,na] + self.x_sp[na,:])*(self.xlen)/(self.Nx)
-        Y_sp = ylim[0]+(np.arange(self.Ny)[:,na] + self.y_sp[na,:])*(self.ylen)/(self.Ny)
-        Z_sp = zlim[0]+(np.arange(self.Nz)[:,na] + self.z_sp[na,:])*(self.zlen)/(self.Nz)
-        
-        self.dm.X_sp = X_sp.reshape(self.Nx,self.nx)
-        self.dm.Y_sp = Y_sp.reshape(self.Ny,self.ny)
-        self.dm.Z_sp = Z_sp.reshape(self.Nz,self.nz)
-
-        self.compute_positions()
 
         self.post_init()
         self.compute_dt()
-        #print(f"dt = {self.dm.dt}")
-
-    def shape(self,idim):
-        return (None,)*(self.ndim-idim)+(slice(None),)+(None,)*(idim)
-    
-    def compute_positions(self):
-        # 1-D array storing the position of interfaces
-        self.dm.X_fp = np.ndarray((self.Nx * self.nx + self.nghx*2+1))
-        self.dm.Y_fp = np.ndarray((self.Ny * self.ny + self.nghy*2+1))
-        self.dm.Z_fp = np.ndarray((self.Nz * self.nz + self.nghz*2+1))
-        self.faces = defaultdict(list)
-        self.faces["x"] = self.dm.X_fp
-        self.faces["y"] = self.dm.Y_fp
-        self.faces["z"] = self.dm.Z_fp
-        for dim in self.dims2:
-            ngh = self.ngh[dim]
-            self.faces[dim][ngh :-ngh] = (
-            self.len[dim]/self.N[dim]*np.hstack(
-            (np.arange(self.N[dim]).repeat(self.n[dim]) + 
-             np.tile(self.fp[dim][:-1], self.N[dim]), self.N[dim]))
-            )
-            self.faces[dim][0:ngh] = -self.faces[dim][ngh+1:2*ngh+1][::-1]
-            self.faces[dim][-ngh:] = self.faces[dim][-(ngh+1)] + self.faces[dim][ngh+1:2*ngh+1]
-        
-        self.dm.X_cv = 0.5*(self.dm.X_fp[1:]+self.dm.X_fp[:-1])
-        self.dm.Y_cv = 0.5*(self.dm.Y_fp[1:]+self.dm.Y_fp[:-1])
-        self.dm.Z_cv = 0.5*(self.dm.Z_fp[1:]+self.dm.Z_fp[:-1])
-        self.centers = defaultdict(list)
-        self.centers["x"] = self.dm.X_cv
-        self.centers["y"] = self.dm.Y_cv
-        self.centers["z"] = self.dm.Z_cv
-
-        self.dm.dx_fp = (self.dm.X_fp[1:]-self.dm.X_fp[:-1])[self.shape(0)]
-        self.dm.dx_cv = (self.dm.X_cv[1:]-self.dm.X_cv[:-1])[self.shape(0)]
-        self.dm.dy_fp = (self.dm.Y_fp[1:]-self.dm.Y_fp[:-1])[self.shape(1)]
-        self.dm.dy_cv = (self.dm.Y_cv[1:]-self.dm.Y_cv[:-1])[self.shape(1)]
-        self.dm.dz_fp = (self.dm.Z_fp[1:]-self.dm.Z_fp[:-1])[self.shape(2)]
-        self.dm.dz_cv = (self.dm.Z_cv[1:]-self.dm.Z_cv[:-1])[self.shape(2)]
-
-        self.h_fp = defaultdict(list)
-        self.h_cv = defaultdict(list)
-        self.h_fp["x"] = self.dm.dx_fp
-        self.h_cv["x"] = self.dm.dx_cv
-        self.h_fp["y"] = self.dm.dy_fp
-        self.h_cv["y"] = self.dm.dy_cv
-        self.h_fp["z"] = self.dm.dz_fp
-        self.h_cv["z"] = self.dm.dz_cv
     
     def compute_mesh_cv(self) -> np.ndarray:
         na = np.newaxis
@@ -270,26 +100,6 @@ class SD_Simulator:
         self.dm.W_sp = self.compute_sp_from_cv(self.dm.W_cv)
         self.dm.U_sp = self.compute_conservatives(self.dm.W_sp)
         self.dm.U_cv = self.compute_conservatives(self.dm.W_cv)
-
-    def domain_size(self):
-        Nx = self.Nx*(self.nx)
-        Ny = self.Ny*(self.ny)
-        Nz = self.Ny*(self.nz)
-        return Nx,Ny,Nz
-
-    def regular_faces(self):
-        Nx,Ny,Nz = self.domain_size()
-        x=np.linspace(0,self.xlen,Nx+1)
-        y=np.linspace(0,self.ylen,Ny+1)
-        z=np.linspace(0,self.zlen,Nz+1)
-        return x,y,z
-
-    def regular_centers(self):
-        Nx,Ny,Nz = self.domain_size()
-        x=np.linspace(0,self.xlen,Nx)
-        y=np.linspace(0,self.ylen,Ny)
-        z=np.linspace(0,self.zlen,Nz)
-        return x,y,z
     
     def regular_mesh(self,W):
         #Interpolate to a regular mesh
@@ -395,10 +205,6 @@ class SD_Simulator:
         if self.Y:
             shape += [self.p+1]
         return np.ndarray(shape)
-
-    def crop(self,M)->np.ndarray:
-        ngh = self.Nghe
-        return M[(slice(None),)+(slice(ngh,-ngh),)*self.ndim+(Ellipsis,)]
     
     def compute_sp_from_cv(self,M_cv)->np.ndarray:
         return compute_A_from_B_full(M_cv,self.dm.cv_to_sp,self.ndim)
@@ -429,30 +235,6 @@ class SD_Simulator:
             if dim != other_dim:
                 M_fp = compute_A_from_B(M_fp,self.dm.sp_to_cv,other_dim,self.ndim,ader=ader)
         return M_fp
-
-    def compute_primitives(self,U,**kwargs)->np.ndarray:
-        return hydro.compute_primitives(
-                U,
-                self.vels,
-                self._p_,
-                self.gamma,
-                **kwargs)
-                
-    def compute_conservatives(self,W,**kwargs)->np.ndarray:
-        return hydro.compute_conservatives(
-                W,
-                self.vels,
-                self._p_,
-                self.gamma,
-                **kwargs)
-    
-    def compute_fluxes(self,F,M,vels,prims)->np.ndarray:
-        assert len(vels)==self.ndim
-        if prims:
-            W = M
-        else:
-            W = self.compute_primitives(M)
-        hydro.compute_fluxes(W,vels,self._p_,self.gamma,F=F)
 
     def compute_dt(self) -> None:
         W = self.dm.W_cv

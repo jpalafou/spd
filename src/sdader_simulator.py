@@ -5,24 +5,99 @@ from collections import defaultdict
 from sd_simulator import SD_Simulator
 from fv_simulator import FV_Simulator
 from data_management import CupyLocation
+from polynomials import gauss_legendre_quadrature
+from polynomials import ader_matrix
 import sd_boundary as bc
-from initial_conditions import sine_wave
 import riemann_solver as rs
+from trouble_detection import detect_troubles
 from timeit import default_timer as timer
 from slicing import cut, indices, indices2
 
-class SDADER_Simulator(FV_Simulator):
+class SDADER_Simulator(SD_Simulator,FV_Simulator):
     def __init__(self,
                  update = "SD",
                  FB = False,
+                 tolerance = 1e-5,
+                 PAD=True,
+                 min_rho = 1e-10,
+                 max_rho = 1e10,
+                 min_P = 1e-10,
                  *args,
                  **kwargs):
         super().__init__(*args, **kwargs)
         self.update = update
         self.FB = FB
+        self.tolerance = tolerance
+        self.PAD = True
+        self.min_rho = min_rho
+        self.max_rho = max_rho
+        self.min_P = min_P
+
+        # ADER matrix.
+        self.dm.x_tp, self.dm.w_tp = gauss_legendre_quadrature(0.0, 1.0, self.m + 1)
+        ader = ader_matrix(self.dm.x_tp, self.dm.w_tp, 1.0)
+        self.dm.invader = np.linalg.inv(ader)
+        self.dm.invader = np.einsum("p,np->np",self.dm.w_tp,self.dm.invader)
+        #number of time slices
+        self.nader = self.m+1
+
         self.ader_arrays()
+        self.compute_positions()
         if update=="FV":
             self.fv_arrays()
+            if FB:
+                self.fb_arrays()
+
+    def compute_positions(self):
+        na = np.newaxis
+        X_sp = self.xlim[0]+(np.arange(self.Nx)[:,na] + self.x_sp[na,:])*(self.xlen)/(self.Nx)
+        Y_sp = self.ylim[0]+(np.arange(self.Ny)[:,na] + self.y_sp[na,:])*(self.ylen)/(self.Ny)
+        Z_sp = self.zlim[0]+(np.arange(self.Nz)[:,na] + self.z_sp[na,:])*(self.zlen)/(self.Nz)
+        
+        self.dm.X_sp = X_sp.reshape(self.Nx,self.nx)
+        self.dm.Y_sp = Y_sp.reshape(self.Ny,self.ny)
+        self.dm.Z_sp = Z_sp.reshape(self.Nz,self.nz)
+        # 1-D array storing the position of interfaces
+        self.dm.X_fp = np.ndarray((self.Nx * self.nx + self.nghx*2+1))
+        self.dm.Y_fp = np.ndarray((self.Ny * self.ny + self.nghy*2+1))
+        self.dm.Z_fp = np.ndarray((self.Nz * self.nz + self.nghz*2+1))
+        self.faces = defaultdict(list)
+        self.faces["x"] = self.dm.X_fp
+        self.faces["y"] = self.dm.Y_fp
+        self.faces["z"] = self.dm.Z_fp
+        for dim in self.dims2:
+            ngh = self.ngh[dim]
+            self.faces[dim][ngh :-ngh] = (
+            self.len[dim]/self.N[dim]*np.hstack(
+            (np.arange(self.N[dim]).repeat(self.n[dim]) + 
+             np.tile(self.fp[dim][:-1], self.N[dim]), self.N[dim]))
+            )
+            self.faces[dim][0:ngh] = -self.faces[dim][ngh+1:2*ngh+1][::-1]
+            self.faces[dim][-ngh:] = self.faces[dim][-(ngh+1)] + self.faces[dim][ngh+1:2*ngh+1]
+        
+        self.dm.X_cv = 0.5*(self.dm.X_fp[1:]+self.dm.X_fp[:-1])
+        self.dm.Y_cv = 0.5*(self.dm.Y_fp[1:]+self.dm.Y_fp[:-1])
+        self.dm.Z_cv = 0.5*(self.dm.Z_fp[1:]+self.dm.Z_fp[:-1])
+        self.centers = defaultdict(list)
+        self.centers["x"] = self.dm.X_cv
+        self.centers["y"] = self.dm.Y_cv
+        self.centers["z"] = self.dm.Z_cv
+
+        self.dm.dx_fp = (self.dm.X_fp[1:]-self.dm.X_fp[:-1])[self.shape(0)]
+        self.dm.dx_cv = (self.dm.X_cv[1:]-self.dm.X_cv[:-1])[self.shape(0)]
+        self.dm.dy_fp = (self.dm.Y_fp[1:]-self.dm.Y_fp[:-1])[self.shape(1)]
+        self.dm.dy_cv = (self.dm.Y_cv[1:]-self.dm.Y_cv[:-1])[self.shape(1)]
+        self.dm.dz_fp = (self.dm.Z_fp[1:]-self.dm.Z_fp[:-1])[self.shape(2)]
+        self.dm.dz_cv = (self.dm.Z_cv[1:]-self.dm.Z_cv[:-1])[self.shape(2)]
+
+        self.h_fp = defaultdict(list)
+        self.h_cv = defaultdict(list)
+        self.h_fp["x"] = self.dm.dx_fp
+        self.h_cv["x"] = self.dm.dx_cv
+        self.h_fp["y"] = self.dm.dy_fp
+        self.h_cv["y"] = self.dm.dy_cv
+        self.h_fp["z"] = self.dm.dz_fp
+        self.h_cv["z"] = self.dm.dz_cv
 
     def ader_arrays(self):
         """
@@ -39,6 +114,15 @@ class SDADER_Simulator(FV_Simulator):
             self.dm.__setattr__(f"MR_fp_{dim}",self.array_RS(dim=dim,ader=True))
             #Arrays to communicate boundary values
             self.dm.__setattr__(f"BC_fp_{dim}",self.array_BC(dim=dim,ader=True))
+
+    def fb_arrays(self):
+        """
+        Allocate arrays to be used in trouble detection
+        """
+        self.dm.troubles  = self.array_FV(self.p+1,1)
+        for dim in self.dims2:
+            #Conservative/Primitive varibles at flux points
+            self.dm.__setattr__(f"affected_faces_{dim}",self.array_FV(self.p+1,1,dim=dim))
 
     def create_dicts(self):
         """
@@ -184,28 +268,23 @@ class SDADER_Simulator(FV_Simulator):
             self.F_faces[dim][indices(-1,shift)] = np.transpose(
                 self.F_ader_fp[dim][:,i_ader][indices2(-1,ndim,shift)],dims2[ndim-1]).reshape(shape)
     
-    def fv_apply_fluxes(self,dt):
-        dUdt = self.dm.U_cv.copy()*0
+    def correct_fluxes(self):
         for dim in self.dims2:
-            ndim = self.ndim
-            ngh = self.ngh[dim]
-            shift=self.dims2[dim]
-            dx = self.faces[dim][ngh+1:-ngh] - self.faces[dim][ngh:-(ngh+1)]
-            dx = dx[(None,)*(ndim-shift)+(slice(None),)+(None,)*(shift)]
-            dUdt += (self.F_faces[dim][cut(1,None,shift)]
-                             -self.F_faces[dim][cut(None,-1,shift)])/dx
-        
-        self.dm.U_cv -= dUdt*dt
+            theta = self.dm.__getattribute__(f"affected_faces_{dim}")
+            self.F_faces[dim] = theta*self.MR_faces[dim] + (1-theta)*self.F_faces[dim]
 
     def fv_update(self):
         self.switch_to_finite_volume()
+        self.dm.U_new[...] = self.dm.U_cv
         for i_ader in range(self.nader):
             dt = self.dm.dt*self.dm.w_tp[i_ader]
+            self.store_high_order_fluxes(i_ader)
             if self.FB:
+                detect_troubles(self)
                 self.compute_fv_fluxes()
-            else:
-                self.store_high_order_fluxes(i_ader)
+                self.correct_fluxes()
             self.fv_apply_fluxes(dt)
+            self.dm.U_cv[...] = self.dm.U_new
         self.switch_to_high_order()
 
     ####################
