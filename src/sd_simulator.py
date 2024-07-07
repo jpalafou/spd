@@ -28,18 +28,18 @@ class SD_Simulator(Simulator):
         super().__init__(*args, **kwargs)
         self.riemann_solver_sd = riemann_solver_sd
         self.x, self.w = gauss_legendre_quadrature(0.0, 1.0, self.p)
-
-        self.x_sp = solution_points(0.0, 1.0, self.p)
-        self.y_sp = (np.ones(1)/2,self.x_sp) [self.Y]
-        self.z_sp = (np.ones(1)/2,self.x_sp) [self.Z]
-        self.x_fp = flux_points(0.0, 1.0, self.p)
-        self.y_fp = (np.ones(1)/2,self.x_fp) [self.Y]
-        self.z_fp = (np.ones(1)/2,self.x_fp) [self.Z]
-
-        self.fp = defaultdict(list)
-        self.fp["x"] = self.x_fp
-        self.fp["y"] = self.y_fp
-        self.fp["z"] = self.z_fp
+        sp = solution_points(0.0, 1.0, self.p)
+        fp = flux_points(0.0, 1.0, self.p)
+        
+        for name in ["sp","fp","n"]:
+            self.__setattr__(name,defaultdict(list))
+        for dim in self.dims2:    
+            self.__setattr__(f"{dim}_sp",sp)
+            self.sp[dim] = self.__getattribute__(f"{dim}_sp")
+            self.__setattr__(f"{dim}_fp",fp)
+            self.fp[dim] = self.__getattribute__(f"{dim}_fp")
+            self.__setattr__(f"n{dim}",self.p+1)
+            self.n[dim] = self.__getattribute__(f"n{dim}")
 
         # Lagrange matrices to perform interpolation between basis
         self.dm.sp_to_fp = lagrange_matrix(self.x_fp, self.x_sp)
@@ -50,15 +50,6 @@ class SD_Simulator(Simulator):
         self.dm.sp_to_cv = intfromsol_matrix(self.x_sp, self.x_fp)
         self.dm.fp_to_cv = intfromsol_matrix(self.x_fp, self.x_fp)
         self.dm.cv_to_sp = np.linalg.inv(self.dm.sp_to_cv)
-        
-        self.nx = self.p+1
-        self.ny = (1,self.p+1) [self.Y]
-        self.nz = (1,self.p+1) [self.Z]
-
-        self.n = defaultdict(list)
-        self.n["x"] = self.nx
-        self.n["y"] = self.ny
-        self.n["z"] = self.nz
 
         self.mesh_cv = self.compute_mesh_cv()
 
@@ -66,24 +57,18 @@ class SD_Simulator(Simulator):
         self.compute_dt()
     
     def compute_mesh_cv(self) -> np.ndarray:
-        na = np.newaxis
-        Nx = self.Nx+2*self.Nghe
-        Ny = self.Ny+2*self.Nghe*self.Y
-        Nz = self.Nz+2*self.Nghe*self.Z
-        if self.ndim==1:
-            mesh_cv = np.ndarray((1, Nx, self.p+2))
-            mesh_cv[0] = self.xlim[0]+(np.arange(Nx)[:,na] + self.x_fp[na,:])*(self.xlen+2*self.Nghe*self.dx)/Nx-self.dx
-        elif self.ndim==2:
-            mesh_cv = np.ndarray((2,Ny, Nx,self.p+2, self.p+2))
-            mesh_cv[0] = self.xlim[0]+(np.arange(Nx)[na,:,na,na] + self.x_fp[na,na,na,:])*(self.xlen+2*self.Nghe*self.dx)/Nx-self.dx
-            mesh_cv[1] = self.ylim[0]+(np.arange(Ny)[:,na,na,na] + self.y_fp[na,na,:,na])*(self.ylen+2*self.Nghe*self.dy)/Ny-self.dy
-        elif self.ndim==3:
-            mesh_cv = np.ndarray((3,Nz, Ny, Nx, self.p+2, self.p+2, self.p+2))
-            mesh_cv[0] = self.xlim[0]+(np.arange(Nx)[na,na,:,na,na,na] + self.x_fp[na,na,na,na,na,:])*(self.xlen+2*self.Nghe*self.dx)/Nx-self.dx
-            mesh_cv[1] = self.ylim[0]+(np.arange(Ny)[na,:,na,na,na,na] + self.y_fp[na,na,na,na,:,na])*(self.ylen+2*self.Nghe*self.dy)/Ny-self.dy
-            mesh_cv[2] = self.zlim[0]+(np.arange(Nz)[:,na,na,na,na,na] + self.z_fp[na,na,na,:,na,na])*(self.zlen+2*self.Nghe*self.dz)/Nz-self.dz
-        else:
-            raise("Incorrect number of dimensions")
+        Nghe=self.Nghe
+        Ns = [self.N[dim]+2*Nghe for dim in self.dims2]
+        shape = (self.ndim,)+tuple(Ns[::-1])+(self.p+2,)*self.ndim
+        mesh_cv = np.ndarray(shape)
+        for dim in self.dims2:
+            idim = self.dims2[dim]
+            N = Ns[idim]
+            h=self.h[dim]
+            lenght = self.len[dim]+2*Nghe*h
+            shape1 = (None,)*(self.ndim-1-idim)+(slice(None),)+(None,)*(self.ndim+idim)
+            shape2 = (None,)*(2*self.ndim-1-idim)+(slice(None),)+(None,)*(idim)
+            mesh_cv[idim] = self.lim[dim][0]+(np.arange(N)[shape1]+self.fp[dim][shape2])*lenght/N-h
         return mesh_cv
         
     def post_init(self) -> None:
@@ -245,5 +230,5 @@ class SD_Simulator(Simulator):
         if self.Z:
             c += np.abs(W[self._vz_])+c_s
         c_max = np.max(c)
-        self.dm.dt = self.cfl_coeff*min(self.dx,min(self.dy,self.dz))/c_max/(self.p + 1)  
+        self.dm.dt = self.cfl_coeff*self.h_min/c_max/(self.p + 1)  
 

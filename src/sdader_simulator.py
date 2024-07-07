@@ -50,54 +50,36 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
 
     def compute_positions(self):
         na = np.newaxis
-        X_sp = self.xlim[0]+(np.arange(self.Nx)[:,na] + self.x_sp[na,:])*(self.xlen)/(self.Nx)
-        Y_sp = self.ylim[0]+(np.arange(self.Ny)[:,na] + self.y_sp[na,:])*(self.ylen)/(self.Ny)
-        Z_sp = self.zlim[0]+(np.arange(self.Nz)[:,na] + self.z_sp[na,:])*(self.zlen)/(self.Nz)
-        
-        self.dm.X_sp = X_sp.reshape(self.Nx,self.nx)
-        self.dm.Y_sp = Y_sp.reshape(self.Ny,self.ny)
-        self.dm.Z_sp = Z_sp.reshape(self.Nz,self.nz)
-        # 1-D array storing the position of interfaces
-        self.dm.X_fp = np.ndarray((self.Nx * self.nx + self.nghx*2+1))
-        self.dm.Y_fp = np.ndarray((self.Ny * self.ny + self.nghy*2+1))
-        self.dm.Z_fp = np.ndarray((self.Nz * self.nz + self.nghz*2+1))
+        ngh=self.Nghc
         self.faces = defaultdict(list)
-        self.faces["x"] = self.dm.X_fp
-        self.faces["y"] = self.dm.Y_fp
-        self.faces["z"] = self.dm.Z_fp
-        for dim in self.dims2:
-            ngh = self.ngh[dim]
-            self.faces[dim][ngh :-ngh] = (
-            self.len[dim]/self.N[dim]*np.hstack(
-            (np.arange(self.N[dim]).repeat(self.n[dim]) + 
-             np.tile(self.fp[dim][:-1], self.N[dim]), self.N[dim]))
-            )
-            self.faces[dim][0:ngh] = -self.faces[dim][ngh+1:2*ngh+1][::-1]
-            self.faces[dim][-ngh:] = self.faces[dim][-(ngh+1)] + self.faces[dim][ngh+1:2*ngh+1]
-        
-        self.dm.X_cv = 0.5*(self.dm.X_fp[1:]+self.dm.X_fp[:-1])
-        self.dm.Y_cv = 0.5*(self.dm.Y_fp[1:]+self.dm.Y_fp[:-1])
-        self.dm.Z_cv = 0.5*(self.dm.Z_fp[1:]+self.dm.Z_fp[:-1])
         self.centers = defaultdict(list)
-        self.centers["x"] = self.dm.X_cv
-        self.centers["y"] = self.dm.Y_cv
-        self.centers["z"] = self.dm.Z_cv
-
-        self.dm.dx_fp = (self.dm.X_fp[1:]-self.dm.X_fp[:-1])[self.shape(0)]
-        self.dm.dx_cv = (self.dm.X_cv[1:]-self.dm.X_cv[:-1])[self.shape(0)]
-        self.dm.dy_fp = (self.dm.Y_fp[1:]-self.dm.Y_fp[:-1])[self.shape(1)]
-        self.dm.dy_cv = (self.dm.Y_cv[1:]-self.dm.Y_cv[:-1])[self.shape(1)]
-        self.dm.dz_fp = (self.dm.Z_fp[1:]-self.dm.Z_fp[:-1])[self.shape(2)]
-        self.dm.dz_cv = (self.dm.Z_cv[1:]-self.dm.Z_cv[:-1])[self.shape(2)]
-
         self.h_fp = defaultdict(list)
         self.h_cv = defaultdict(list)
-        self.h_fp["x"] = self.dm.dx_fp
-        self.h_cv["x"] = self.dm.dx_cv
-        self.h_fp["y"] = self.dm.dy_fp
-        self.h_cv["y"] = self.dm.dy_cv
-        self.h_fp["z"] = self.dm.dz_fp
-        self.h_cv["z"] = self.dm.dz_cv
+        for dim in self.dims2:
+            idim = self.dims2[dim]
+            #Solution points
+            sp = self.lim[dim][0] + (np.arange(self.N[dim])[:,na] + self.sp[dim][na,:])*self.h[dim]
+            self.dm.__setattr__(f"{dim.upper()}_sp",sp.reshape(self.N[dim],self.n[dim]))
+            #Flux points
+            fp = np.ndarray((self.N[dim] * self.n[dim] + ngh*2+1))
+            fp[ngh :-ngh] = (self.h[dim]*np.hstack((np.arange(self.N[dim]).repeat(self.n[dim]) + 
+             np.tile(self.fp[dim][:-1],self.N[dim]),self.N[dim])))
+            fp[ :ngh] = -fp[(ngh+1):(2*ngh+1)][::-1]
+            fp[-ngh:] =  fp[-(ngh+1)] + fp[ngh+1:2*ngh+1]
+            self.dm.__setattr__(f"{dim.upper()}_fp",fp)
+            self.faces[dim] = fp
+            #Cell centers 
+            cv = 0.5*(fp[1:]+fp[:-1])
+            self.dm.__setattr__(f"{dim.upper()}_cv",cv)
+            self.centers[dim] = cv
+            #Distance between faces
+            h_fp = (fp[1:]-fp[:-1])[self.shape(idim)]
+            self.dm.__setattr__(f"d{dim}_fp",h_fp)
+            self.h_fp[dim] = h_fp
+            #Distance between centers
+            h_cv = (cv[1:]-cv[:-1])[self.shape(idim)]
+            self.dm.__setattr__(f"d{dim}_cv",h_cv)
+            self.h_cv[dim] = h_cv
 
     def ader_arrays(self):
         """
@@ -255,12 +237,10 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         ndim=self.ndim
         dims  = [(0,1,2),(0,1,3,2,4),(0,1,4,2,5,3,6)]
         dims2 = [(0),(0,1,2),(0,1,3,2,4)]
-        shapes = [[self.nvar,self.Nx*self.nx],
-                  [self.nvar,self.Ny*self.ny,self.Nx*self.nx],
-                  [self.nvar,self.Nz*self.nz,self.Ny*self.ny,self.Nx*self.nx]]
+        Nn = [self.N[dim]*self.n[dim] for dim in self.dims2][::-1]
         for dim in self.dims2:
             shift=self.dims2[dim]
-            shape=shapes[ndim-1].copy()
+            shape=[self.nvar]+Nn
             self.F_faces[dim][cut(None,-1,shift)] = np.transpose(
                 self.F_ader_fp[dim][:,i_ader][cut(None,-1,shift)],dims[ndim-1]
                 ).reshape(shape)

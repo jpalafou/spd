@@ -41,11 +41,10 @@ class Simulator:
         self.Z = ndim>2
         self.Ny = ((1,Ny) [self.Y]) 
         self.Nz = ((1,Nz) [self.Z])
-
-        self.N = defaultdict(list)
-        self.N["x"] = self.Nx
-        self.N["y"] = self.Ny
-        self.N["z"] = self.Nz
+        self.xlim = xlim
+        self.ylim = ylim
+        self.zlim = zlim
+        self.time = 0.0
 
         self.Nghe = Nghe #Number of ghost element layers
         self.Nghc = Nghc #Number of ghost cell layers
@@ -58,32 +57,34 @@ class Simulator:
         self.BC = defaultdict(list)
         self.dims = defaultdict(list)
         self.dims2 = defaultdict(list)
+        
         dims = ["x","y","z"]
         for dim in range(ndim):
             self.dims[dim] = dims[dim]
             self.dims2[dims[dim]] = dim
-            self.BC[dims[dim]] = BC[0]     
-
+            self.BC[dims[dim]] = BC[0]
+                
         self.dm = GPUDataManager(use_cupy)
-        
-        self.xlim = xlim
-        self.ylim = ylim
-        self.zlim = zlim
-        self.time = 0.0
-        
-        self.xlen = xlim[1]-xlim[0]
-        self.ylen = ylim[1]-ylim[0]
-        self.zlen = zlim[1]-zlim[0]
 
+        self.nghx = Nghc
+        self.nghy = (0,Nghc) [self.Y]
+        self.nghz = (0,Nghc) [self.Z]
+        
+        self.lim = defaultdict(list)
         self.len = defaultdict(list)
-        self.len["x"] = self.xlen
-        self.len["y"] = self.ylen
-        self.len["z"] = self.zlen
-
-        self.dx = self.xlen/self.Nx
-        self.dy = self.ylen/self.Ny
-        self.dz = self.zlen/self.Nz
-
+        self.h = defaultdict(list)
+        self.N = defaultdict(list)
+        self.ngh = defaultdict(list)
+        self.h_min = 1E10
+        for dim in self.dims2:
+            self.lim[dim] = self.__getattribute__(f"{dim}lim") 
+            self.__setattr__(f"{dim}len",self.lim[dim][1]-self.lim[dim][0])
+            self.len[dim] = self.__getattribute__(f"{dim}len")
+            self.N[dim] =  self.__getattribute__(f"N{dim}")
+            self.__setattr__(f"d{dim}", self.len[dim]/self.N[dim])
+            self.h[dim] = self.__getattribute__(f"d{dim}") 
+            self.ngh[dim] = self.__getattribute__(f"ngh{dim}") 
+            self.h_min = min(self.h_min,self.h[dim])
         self.n_step = 0
         
         nvar=0
@@ -106,15 +107,6 @@ class Simulator:
         assert nvar == 2 + self.ndim
         self.nvar = nvar
         self.vels=np.array([self._vx_,self._vy_,self._vz_])[:self.ndim]
-
-        self.nghx = Nghc
-        self.nghy = (0,Nghc) [self.Y]
-        self.nghz = (0,Nghc) [self.Z]
-
-        self.ngh = defaultdict(list)
-        self.ngh["x"] = self.nghx
-        self.ngh["y"] = self.nghy
-        self.ngh["z"] = self.nghz
 
     def shape(self,idim):
         return (None,)*(self.ndim-idim)+(slice(None),)+(None,)*(idim)
