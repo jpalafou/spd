@@ -16,12 +16,14 @@ class FV_Simulator(Simulator):
     def __init__(
         self,
         riemann_solver_fv: Callable = rs.llf,
-        slope_limiter = "minmod",
+        slope_limiter: str = "minmod",
+        predictor: bool = True,
         *args,
         **kwargs):
         super().__init__(*args, **kwargs)
         self.riemann_solver_fv = riemann_solver_fv
         self.slope_limiter = slope_limiter
+        self.predictor = predictor
 
     def array_FV(self,n,nvar,dim=None,ngh=0)->np.ndarray:
         shape = [nvar] 
@@ -45,6 +47,8 @@ class FV_Simulator(Simulator):
     def fv_arrays(self)->None:
         self.dm.M_fv  = self.array_FV(self.p+1,self.nvar,ngh=self.Nghc)
         self.dm.U_new = self.array_FV(self.p+1,self.nvar)
+        if self.predictor:
+            self.dm.dtM = self.array_FV(self.p+1,self.nvar,ngh=self.Nghc-1)
         for dim in self.dims2:
             #Conservative/Primitive varibles at flux points
             self.dm.__setattr__(f"F_faces_{dim}",self.array_FV(self.p+1,self.nvar,dim=dim))
@@ -68,12 +72,14 @@ class FV_Simulator(Simulator):
             self.ML_faces[dim] = self.dm.__getattribute__(f"ML_faces_{dim}")
             self.BC_fv[dim] = self.dm.__getattribute__(f"BC_fv_{dim}")
 
-    def compute_fv_fluxes(self)->None:
-        return muscl.compute_second_order_fluxes(self)
+    def compute_fv_fluxes(self,dt: float)->None:
+        return muscl.compute_second_order_fluxes(self, dt)
 
-    def crop_fv(self,start,end,dim)->Tuple:
-        ngh=self.Nghc
-        return (Ellipsis,)+(slice(ngh,-ngh),)*(self.ndim-1-dim)+(slice(start,end),)+(slice(ngh,-ngh),)*dim
+    def crop_fv(self,start,end,dim,ngh)->Tuple:
+        if ngh==None:
+            return (Ellipsis,)+(slice(ngh,ngh),)*(self.ndim-1-dim)+(slice(start,end),)+(slice(ngh,ngh),)*dim
+        else:
+            return (Ellipsis,)+(slice(ngh,-ngh),)*(self.ndim-1-dim)+(slice(start,end),)+(slice(ngh,-ngh),)*dim
 
     def fill_active_region(self, M):
         ngh=self.Nghc
@@ -94,7 +100,7 @@ class FV_Simulator(Simulator):
 
     def fv_update(self):
         self.dm.U_new[...] = self.dm.U_cv
-        self.compute_fv_fluxes()
+        self.compute_fv_fluxes(self.dm.dt)
         self.fv_apply_fluxes(self.dm.dt)
         self.dm.U_cv[...] = self.dm.U_new
 

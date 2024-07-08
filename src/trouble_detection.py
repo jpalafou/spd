@@ -39,7 +39,7 @@ def detect_troubles(self: Simulator):
         for dim in self.dims2:
             shift = self.dims2[dim]
             self.fv_Boundaries(self.dm.M_fv,dim)
-            alpha_new = compute_smooth_extrema(self, self.dm.M_fv, dim)[self.crop_fv(None,None,shift)]
+            alpha_new = compute_smooth_extrema(self, self.dm.M_fv, dim)[self.crop_fv(None,None,shift,ngh)]
             alpha = np.where(alpha_new < alpha, alpha_new, alpha)
 
         possible_trouble *= np.where(alpha<1, 1, 0)
