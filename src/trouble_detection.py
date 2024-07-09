@@ -44,7 +44,7 @@ def detect_troubles(self: Simulator):
 
         possible_trouble *= np.where(alpha<1, 1, 0)
 
-    self.dm.troubles = np.amax(possible_trouble,axis=0)
+    self.dm.troubles[...] = np.amax(possible_trouble,axis=0)
 
     ###########################
     # PAD Check for physically admissible values
@@ -66,12 +66,13 @@ def detect_troubles(self: Simulator):
     for dim in self.dims2:
         idim = self.dims2[dim]
         affected_faces = self.dm.__getattribute__(f"affected_faces_{dim}")
+        affected_faces[...] = 0
         affected_faces[cut(None,-1,idim)] = self.dm.troubles
         affected_faces[cut(1 ,None,idim)] = np.maximum(self.dm.troubles,affected_faces[cut(1 ,None,idim)])
 
         if self.BC[dim] == "periodic":
-            affected = np.maximum(affected_faces[indices(0,idim)],affected_faces[indices(1,idim)])
-            affected_faces[indices(0,idim)] = affected_faces[indices(1,idim)] = affected
+            affected = np.maximum(affected_faces[indices(0,idim)],affected_faces[indices(-1,idim)])
+            affected_faces[indices(0,idim)] = affected_faces[indices(-1,idim)] = affected
 
 
 def compute_W_ex(W, dim, f):
