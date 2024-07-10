@@ -203,15 +203,39 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
             vels = np.roll(self.vels,-key)
             self.M_ader_fp[dim][...] = self.compute_fp_from_sp(M,dim,ader=True)
             self.compute_fluxes(self.F_ader_fp[dim], self.M_ader_fp[dim],vels,prims)
-            bc.store_interfaces(self,self.M_ader_fp[dim],dim)
+            bc.Boundaries_sd(self,self.M_ader_fp[dim],dim)
+            F = self.riemann_solver_sd(self.ML_fp[dim], self.MR_fp[dim], vels, self._p_, self.gamma, self.min_c2, prims)
+            bc.apply_interfaces(self,F,self.F_ader_fp[dim],dim)
+        
+        if self.viscosity:
+            self.add_viscosity()
 
-            bc.store_BC(self,self.BC_fp[dim],self.M_ader_fp[dim],dim)
-            #Here would go the BC comms between different domains
-            bc.apply_BC(self,dim)
-
-            self.riemann_solver_sd(self.ML_fp[dim], self.MR_fp[dim], vels, self._p_, self.gamma, self.min_c2, prims)
-            bc.apply_interfaces(self,self.F_ader_fp[dim],dim)
-
+    def compute_gradient(self,M_fp,dim):
+        return self.compute_sp_from_dfp(M_fp,dim,ader=True)/self.h[dim]
+    
+    def add_viscosity(self,):
+        dW_sp = {}
+        for dim in self.dims2:
+            idim = self.dims2[dim]
+            #Compute gradient of primitive variables at flux points
+            self.M_ader_fp[dim][...] = self.compute_primitives(self.M_ader_fp[dim])
+            bc.Boundaries_sd(self,self.M_ader_fp[dim],dim)
+            M = self.ML_fp[dim]
+            bc.apply_interfaces(self,M,self.M_ader_fp[dim],dim)
+            dW_sp[idim] = self.compute_gradient(self.M_ader_fp[dim],dim)
+        dW_fp = {}
+        for dim in self.dims2:
+            idim = self.dims2[dim]
+            vels = np.roll(self.vels,-idim)
+            for idim in self.dims:
+                #Interpolate gradients(all directions) to flux points at dim
+                dW_fp[idim] = self.compute_fp_from_sp(dW_sp[idim],dim,ader=True)
+                bc.Boundaries_sd(self,dW_fp[idim],dim)
+                dW = self.MR_fp[dim]
+                bc.apply_interfaces(self,dW,dW_fp[idim],dim)
+            #Add viscous flux
+            self.F_ader_fp[dim][...] -= self.compute_viscous_fluxes(self.M_ader_fp[dim],dW_fp,vels,prims=True)
+    
     ####################
     ## Finite volume
     ####################
@@ -251,7 +275,7 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
     def correct_fluxes(self):
         for dim in self.dims2:
             theta = self.dm.__getattribute__(f"affected_faces_{dim}")
-            self.F_faces[dim] = theta*self.MR_faces[dim] + (1-theta)*self.F_faces[dim]
+            self.F_faces[dim] = theta*self.F_faces_FB[dim] + (1-theta)*self.F_faces[dim]
 
     def fv_update(self):
         self.switch_to_finite_volume()

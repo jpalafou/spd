@@ -52,12 +52,14 @@ class FV_Simulator(Simulator):
         for dim in self.dims2:
             #Conservative/Primitive varibles at flux points
             self.dm.__setattr__(f"F_faces_{dim}",self.array_FV(self.p+1,self.nvar,dim=dim))
+            self.dm.__setattr__(f"F_faces_FB{dim}",self.array_FV(self.p+1,self.nvar,dim=dim))
             self.dm.__setattr__(f"MR_faces_{dim}",self.array_FV(self.p+1,self.nvar,dim=dim))
             self.dm.__setattr__(f"ML_faces_{dim}",self.array_FV(self.p+1,self.nvar,dim=dim))
             self.dm.__setattr__(f"BC_fv_{dim}",self.array_FV_BC(dim=dim))
 
     def create_dicts_fv(self)->None:
         self.F_faces = defaultdict(list)
+        self.F_faces_FB = defaultdict(list)
         self.MR_faces = defaultdict(list)
         self.ML_faces = defaultdict(list)
         self.BC_fv = defaultdict(list)
@@ -68,6 +70,7 @@ class FV_Simulator(Simulator):
             self.h_fp[dim] = self.dm.__getattribute__(f"d{dim}_fp")
             self.h_cv[dim] = self.dm.__getattribute__(f"d{dim}_cv")
             self.F_faces[dim] = self.dm.__getattribute__(f"F_faces_{dim}")
+            self.F_faces_FB[dim] = self.dm.__getattribute__(f"F_faces_FB{dim}")
             self.MR_faces[dim] = self.dm.__getattribute__(f"MR_faces_{dim}")
             self.ML_faces[dim] = self.dm.__getattribute__(f"ML_faces_{dim}")
             self.BC_fv[dim] = self.dm.__getattribute__(f"BC_fv_{dim}")

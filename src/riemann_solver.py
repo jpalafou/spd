@@ -11,7 +11,7 @@ def llf(
     prims: bool,
     *args,
     **kwargs,
-) -> None:
+) -> np.ndarray:
     """
     LLF Riemann Solver
     M_L/M_R = Primitive variables or Conservative variables
@@ -42,7 +42,7 @@ def llf(
     
     c_max = np.where(c_L>c_R,c_L,c_R)[np.newaxis,...]
         
-    M_R[...] = M_L[...] = 0.5*(F_R+F_L)-0.5*c_max*(U_R-U_L)
+    return 0.5*(F_R+F_L)-0.5*c_max*(U_R-U_L)
 
 def solve_riemann_hllc(
     M_L: np.ndarray,
@@ -54,7 +54,7 @@ def solve_riemann_hllc(
     prims: bool,
     *args,
     **kwargs,
-) -> None:
+) -> np.ndarray:
     """
     HLLC Riemann Solver
     M_L/M_R = Primitive variables or Conservative variables
@@ -122,10 +122,10 @@ def solve_riemann_hllc(
                     np.where(v_star>0,e_starL,
                             np.where(s_R>0,e_starR,U_R[_p_])))
           
-    #We store the fluxes in M_R                 
-    M_R[_d_,...] = r_gdv*v_gdv
-    M_R[v_1,...] = M_R[_d_]*v_gdv + P_gdv
-    M_R[_p_,...] = v_gdv*(e_gdv + P_gdv)
-    if ndim>1:
-        for vel in vels[1:]:
-            M_R[vel,...] = M_R[_d_]*np.where(v_star>0,W_L[vel],W_R[vel])
+    F = W_L.copy()             
+    F[_d_,...] = r_gdv*v_gdv
+    F[v_1,...] = F[_d_]*v_gdv + P_gdv
+    F[_p_,...] = v_gdv*(e_gdv + P_gdv)
+    for vel in vels[1:]:
+        F[vel,...] = F[_d_]*np.where(v_star>0,W_L[vel],W_R[vel])
+    return F

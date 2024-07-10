@@ -124,3 +124,30 @@ def compute_fluxes(
     F[v1,...] = m*W[v1] + W[_p_]
     F[_p_,...] = W[v1]*(E + W[_p_])
     return F
+
+def compute_viscous_fluxes(
+        W: np.ndarray,
+        vels: np.array,
+        dUs: dict,
+        _e_: int,
+        nu: float,
+        beta: float,
+        F=None)->np.ndarray:
+    if type(F)==type(None):
+        F = W.copy()
+    F[...] = 0
+    #index of normal component
+    v1  = vels[0]
+    #Gradient in normal dimension
+    dU1 = dUs[v1-1]
+    #Flux is normal dimension
+    F[v1] = 2*dU1[v1] - beta*dU1[v1]
+    #Energy flux
+    F[_e_] = W[v1]*F[v1]
+    for vel in vels[1:]:
+        idim = vel-1
+        dU = dUs[idim]
+        F[v1]  -= beta*dU[vel]
+        F[vel]  = (dU1[vel]+dU[v1])
+        F[_e_] += W[vel]*F[vel]
+    return F*W[0]*nu

@@ -18,7 +18,8 @@ def store_interfaces(self: SD_Simulator,
     self.ML_fp[dim][cut(1 ,None,shift)] = M[indices(-1,self.dims2[dim])]
 
 def apply_interfaces(self: SD_Simulator,
-                     M: np.ndarray,
+                     F: np.ndarray,
+                     F_fp: np.ndarray,
                      dim: str):
     """
     Applies the values of flux points at the extremes of elements(0,-1)
@@ -26,8 +27,8 @@ def apply_interfaces(self: SD_Simulator,
     solved. 
     """
     shift=self.ndim+self.dims2[dim]-1
-    M[indices( 0,self.dims2[dim])] = self.MR_fp[dim][cut(None,-1,shift)]
-    M[indices(-1,self.dims2[dim])] = self.ML_fp[dim][cut(1, None,shift)]
+    F_fp[indices( 0,self.dims2[dim])] = F[cut(None,-1,shift)]
+    F_fp[indices(-1,self.dims2[dim])] = F[cut(1, None,shift)]
 
 def store_BC(self: SD_Simulator,
              BC_array: np.ndarray,
@@ -61,3 +62,11 @@ def apply_BC(self: SD_Simulator,
     shift=self.ndim+self.dims2[dim]-1
     self.ML_fp[dim][indices( 0,shift)] = self.BC_fp[dim][0]
     self.MR_fp[dim][indices(-1,shift)] = self.BC_fp[dim][1]
+
+def Boundaries_sd(self: SD_Simulator,
+                  M: np.ndarray,
+                  dim: str):
+    store_interfaces(self,M,dim)
+    store_BC(self,self.BC_fp[dim],M,dim)
+            #Here would go the BC comms between different domains
+    apply_BC(self,dim)

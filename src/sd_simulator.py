@@ -230,5 +230,8 @@ class SD_Simulator(Simulator):
         if self.Z:
             c += np.abs(W[self._vz_])+c_s
         c_max = np.max(c)
-        self.dm.dt = self.cfl_coeff*self.h_min/c_max/(self.p + 1)  
-
+        h = self.h_min/(self.p + 1) 
+        dt = h/c_max 
+        if self.viscosity and self.nu>0:
+            dt = min(dt,h**2/self.nu*.25)
+        self.dm.dt = self.cfl_coeff*dt

@@ -41,14 +41,13 @@ def MUSCL_fluxes(self: Simulator, dt: float, prims=True):
     self.dm.M_fv[...]  = 0
     #Copy W_cv to active region of M_fv
     self.fill_active_region(self.compute_primitives(self.dm.U_cv))
-
+    for dim in self.dims2:
+        self.fv_Boundaries(self.dm.M_fv,dim)
     for dim in self.dims2:
         shift=self.dims2[dim]
         vels = np.roll(self.vels,-shift)
         h_cv = self.h_cv[dim]
         h_fp = self.h_fp[dim]
-
-        self.fv_Boundaries(self.dm.M_fv,dim)
         
         dM = (self.dm.M_fv[cut(1,None,shift)] - self.dm.M_fv[cut(None,-1,shift)])/h_cv
         dMh = compute_slopes(self,dM,shift)    
@@ -80,12 +79,11 @@ def MUSCL_Hancock_fluxes(self: Simulator, dt: float, prims=True):
     #Copy W_cv to active region of M_fv
     self.fill_active_region(self.compute_primitives(self.dm.U_cv))
     for dim in self.dims2:
+        self.fv_Boundaries(self.dm.M_fv,dim)
+    for dim in self.dims2:
         idim=self.dims2[dim]
         h_cv = self.h_cv[dim]
         h_fp = self.h_fp[dim]
-
-        self.fv_Boundaries(self.dm.M_fv,dim)
-        
         dM = (self.dm.M_fv[cut(1,None,idim)] - self.dm.M_fv[cut(None,-1,idim)])/h_cv
         dMh = compute_slopes(self,dM,idim)
         #Slope*h/2    
@@ -100,7 +98,7 @@ def MUSCL_Hancock_fluxes(self: Simulator, dt: float, prims=True):
         #UR = U - SlopeC*h/2, UL = U + SlopeC*h/2
         self.MR_faces[dim][...] = self.dm.M_fv[self.crop_fv(ngh,-1,idim,ngh)] - self.S[idim][self.crop_fv( 1,None,idim,ngh)]
         self.ML_faces[dim][...] = self.dm.M_fv[self.crop_fv(1,-ngh,idim,ngh)] + self.S[idim][self.crop_fv(None,-1,idim,ngh)] 
-        self.riemann_solver_fv(self.ML_faces[dim], self.MR_faces[dim], vels, self._p_, self.gamma, self.min_c2, prims)
+        self.F_faces_FB[dim] = self.riemann_solver_fv(self.ML_faces[dim], self.MR_faces[dim], vels, self._p_, self.gamma, self.min_c2, prims)
 
 def compute_second_order_fluxes(self: Simulator,
                                 dt: float,

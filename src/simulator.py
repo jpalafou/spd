@@ -25,8 +25,11 @@ class Simulator:
         zlim: Tuple = (0,1),
         ndim: int = 3,
         gamma: float = 1.4,
+        beta: float = 2./3,
+        nu: float = 1e-4,
         cfl_coeff: float = 0.8,
         min_c2: float = 1E-10,
+        viscosity: bool = False,
         use_cupy: bool = True,
         BC: Tuple = ("periodic","periodic","periodic"),
     ):
@@ -50,8 +53,11 @@ class Simulator:
         self.Nghc = Nghc #Number of ghost cell layers
         self.ndim = ndim
         self.gamma=gamma
+        self.beta=beta
+        self.nu=nu
         self.cfl_coeff = cfl_coeff
         self.min_c2 = min_c2
+        self.viscosity = viscosity
 
         assert len(BC) >= ndim
         self.BC = defaultdict(list)
@@ -166,6 +172,14 @@ class Simulator:
         else:
             W = self.compute_primitives(M)
         hydro.compute_fluxes(W,vels,self._p_,self.gamma,F=F)
+
+    def compute_viscous_fluxes(self,M,dMs,vels,prims=False)->np.ndarray:
+        assert len(vels)==self.ndim
+        if prims:
+            W = M
+        else:
+            W = self.compute_primitives(M)
+        return hydro.compute_viscous_fluxes(W,vels,dMs,self._p_,self.nu,self.beta)
 
     def compute_dt(self) -> None:
         pass
