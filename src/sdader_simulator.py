@@ -19,6 +19,7 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
                  FB = False,
                  tolerance = 1e-5,
                  PAD=True,
+                 blending = True,
                  min_rho = 1e-10,
                  max_rho = 1e10,
                  min_P = 1e-10,
@@ -28,7 +29,8 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         self.update = update
         self.FB = FB
         self.tolerance = tolerance
-        self.PAD = True
+        self.PAD = PAD
+        self.blending = blending
         self.min_rho = min_rho
         self.max_rho = max_rho
         self.min_P = min_P
@@ -102,6 +104,8 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         Allocate arrays to be used in trouble detection
         """
         self.dm.troubles  = self.array_FV(self.p+1,1)
+        if self.blending:
+            self.dm.theta = self.array_FV(self.p+1,1,ngh=self.Nghc)
         for dim in self.dims2:
             #Conservative/Primitive varibles at flux points
             self.dm.__setattr__(f"affected_faces_{dim}",self.array_FV(self.p+1,1,dim=dim))

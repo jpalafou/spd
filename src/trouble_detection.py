@@ -62,17 +62,25 @@ def detect_troubles(self: Simulator):
             W_new[self._p_, ...] >= self.min_P, self.dm.troubles, 1)
 
     #self.n_troubles += self.dm.troubles.sum()
+    self.fill_active_region(self.dm.troubles)
+    for dim in self.dims2:
+        self.fv_Boundaries(self.dm.M_fv,dim)
+    trouble = self.dm.M_fv[0]
+    self.dm.theta[0][...] = trouble
+    theta = self.dm.theta[0]
+
+    if self.blending:
+        apply_blending(self,trouble,theta)
 
     for dim in self.dims2:
         idim = self.dims2[dim]
         affected_faces = self.dm.__getattribute__(f"affected_faces_{dim}")
         affected_faces[...] = 0
-        affected_faces[cut(None,-1,idim)] = self.dm.troubles
-        affected_faces[cut(1 ,None,idim)] = np.maximum(self.dm.troubles,affected_faces[cut(1 ,None,idim)])
-
-        if self.BC[dim] == "periodic":
-            affected = np.maximum(affected_faces[indices(0,idim)],affected_faces[indices(-1,idim)])
-            affected_faces[indices(0,idim)] = affected_faces[indices(-1,idim)] = affected
+        affected_faces[...] = np.maximum(theta[self.crop_fv(ngh-1,-ngh,idim,ngh)],theta[self.crop_fv(ngh,-(ngh-1),idim,ngh)])
+        
+        #if self.BC[dim] == "periodic":
+        #    affected = np.maximum(affected_faces[indices(0,idim)],affected_faces[indices(-1,idim)])
+        #    affected_faces[indices(0,idim)] = affected_faces[indices(-1,idim)] = affected
 
 
 def compute_W_ex(W, dim, f):
@@ -124,3 +132,37 @@ def compute_smooth_extrema(self, U, dim):
     alphaR = np.where(alphaR < alphaL, alphaR, alphaL)
     compute_min(alphaR, alphaL, idim)
     return alphaL
+
+def apply_blending(self,trouble,theta):
+    #First neighbors
+    for idim in self.dims:
+        theta[cut(None,-1,idim)] = np.maximum(.75*trouble[cut( 1,None,idim)],theta[cut(None,-1,idim)])
+        theta[cut( 1,None,idim)] = np.maximum(.75*trouble[cut(None,-1,idim)],theta[cut( 1,None,idim)])
+          
+    if self.ndim==2:
+        #Second neighbors
+        theta[:-1,:-1] = np.maximum(.5*trouble[1: ,1: ],theta[:-1,:-1])
+        theta[:-1,1: ] = np.maximum(.5*trouble[1: ,:-1],theta[:-1,1: ])
+        theta[1: ,:-1] = np.maximum(.5*trouble[:-1,1: ],theta[1: ,:-1])
+        theta[1: ,1: ] = np.maximum(.5*trouble[:-1,:-1],theta[1: ,1: ])
+
+    elif self.ndim==3:
+        #Second neighbors
+        a = slice(None,-1)
+        b = slice( 1,None)
+        cuts = [(a,a),(a,b),(b,a),(b,b)]
+        for i in range(len(cuts)):
+            for idim in self.dims:
+                shape1 = tuple(np.roll(np.array((slice(None),)+cuts[ i]),-idim))
+                shape2 = tuple(np.roll(np.array((slice(None),)+cuts[::-1][-i]),-idim))
+                theta[shape1] = np.maximum(.5*trouble[shape2],theta[shape1])
+        #Third neighbors
+        cuts = [(x,y,z) for x in (a,b) for y in (a,b) for z in (a,b)]
+        for i in range(len(cuts)):
+            self.dm.theta[cuts[i]] = np.maximum(.375*trouble[cuts[::-1][i]],self.dm.theta[cuts[i]])
+        
+    for idim in self.dims:
+        theta[cut(None,-1,idim)] = np.maximum(.25*(theta[cut( 1,None,idim)]>0),theta[cut(None,-1,idim)])
+        theta[cut( 1,None,idim)] = np.maximum(.25*(theta[cut(None,-1,idim)]>0),theta[cut( 1,None,idim)])
+     
+        
