@@ -127,25 +127,20 @@ class Simulator:
         pass
 
     def domain_size(self):
-        Nx = self.Nx*(self.nx)
-        Ny = self.Ny*(self.ny)
-        Nz = self.Ny*(self.nz)
-        return Nx,Ny,Nz
+        return [ self.N[dim]*self.n[dim] for dim in self.dims2]
 
     def regular_faces(self):
-        Nx,Ny,Nz = self.domain_size()
-        x=np.linspace(0,self.xlen,Nx+1)
-        y=np.linspace(0,self.ylen,Ny+1)
-        z=np.linspace(0,self.zlen,Nz+1)
-        return x,y,z
+        N = self.N
+        n = self.n
+        lim = self.lim
+        return [np.linspace(lim[dim][0],lim[dim][1],N[dim]*n[dim]+1) for dim in self.dims2]
 
     def regular_centers(self):
-        Nx,Ny,Nz = self.domain_size()
-        x=np.linspace(0,self.xlen,Nx)
-        y=np.linspace(0,self.ylen,Ny)
-        z=np.linspace(0,self.zlen,Nz)
-        return x,y,z
-    
+        N = self.N
+        n = self.n
+        lim = self.lim
+        return [np.linspace(lim[dim][0],lim[dim][1],N[dim]*n[dim]) for dim in self.dims2]
+
     def crop(self,M,ngh=1)->np.ndarray:
         return M[(slice(None),)+(slice(ngh,-ngh),)*self.ndim+(Ellipsis,)]
 
