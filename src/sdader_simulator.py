@@ -15,25 +15,29 @@ from slicing import cut, indices, indices2
 
 class SDADER_Simulator(SD_Simulator,FV_Simulator):
     def __init__(self,
-                 update = "SD",
-                 FB = False,
-                 tolerance = 1e-5,
-                 PAD=True,
-                 blending = True,
-                 min_rho = 1e-10,
-                 max_rho = 1e10,
-                 min_P = 1e-10,
+                 update: str = "SD",
+                 FB: bool = False,
+                 tolerance: float = 1e-5,
+                 SED: bool = True,
+                 PAD: bool = True,
+                 blending: bool = True,
+                 min_rho: float = 1e-10,
+                 max_rho: float = 1e10,
+                 min_P: float = 1e-10,
+                 godunov: bool = False,
                  *args,
                  **kwargs):
         super().__init__(*args, **kwargs)
         self.update = update
         self.FB = FB
         self.tolerance = tolerance
+        self.SED = SED
         self.PAD = PAD
         self.blending = blending
         self.min_rho = min_rho
         self.max_rho = max_rho
         self.min_P = min_P
+        self.godunov = godunov
 
         # ADER matrix.
         self.dm.x_tp, self.dm.w_tp = gauss_legendre_quadrature(0.0, 1.0, self.m + 1)
@@ -243,6 +247,25 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
     ####################
     ## Finite volume
     ####################
+    def array_FV(self,n,nvar,dim=None,ngh=0)->np.ndarray:
+        shape = [nvar] 
+        if self.Z:
+            shape += [self.Nz*n+(dim=="z")+2*ngh]
+        if self.Y:
+            shape += [self.Ny*n+(dim=="y")+2*ngh]
+        shape += [self.Nx*n+(dim=="x")+2*ngh]
+        return np.ndarray(shape)
+    
+    def array_FV_BC(self,dim="x")->np.ndarray:
+        shape = [2,self.nvar]
+        ngh=self.Nghc
+        if self.Z:
+            shape += [self.Nz*self.nz+2*ngh] if dim!="z" else [ngh]
+        if self.Y:
+            shape += [self.Ny*self.ny+2*ngh] if dim!="y" else [ngh]
+        shape += [self.Nx*self.nx+2*ngh] if dim!="x" else [ngh]
+        return np.ndarray(shape)
+
     def switch_to_finite_volume(self):
         #Change to Finite Volume scheme
         self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp)
@@ -278,7 +301,10 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
     
     def correct_fluxes(self):
         for dim in self.dims2:
-            theta = self.dm.__getattribute__(f"affected_faces_{dim}")
+            if self.godunov:
+                theta = 1
+            else:
+                theta = self.dm.__getattribute__(f"affected_faces_{dim}")
             self.F_faces[dim] = theta*self.F_faces_FB[dim] + (1-theta)*self.F_faces[dim]
 
     def fv_update(self):
@@ -287,12 +313,17 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         for i_ader in range(self.nader):
             dt = self.dm.dt*self.dm.w_tp[i_ader]
             self.store_high_order_fluxes(i_ader)
+            #Compute candidate solution
+            self.fv_apply_fluxes(dt)
             if self.FB:
                 detect_troubles(self)
                 self.compute_fv_fluxes(dt)
                 self.correct_fluxes()
-            self.fv_apply_fluxes(dt)
+                #Compute corrected solution
+                self.fv_apply_fluxes(dt)
+            #Update solution
             self.dm.U_cv[...] = self.dm.U_new
+            self.dm.W_cv[...] = self.compute_primitives(self.dm.U_cv)
         self.switch_to_high_order()
 
     ####################

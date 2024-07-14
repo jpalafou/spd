@@ -7,13 +7,14 @@ def detect_troubles(self: Simulator):
     # Reset to check troubled control volumes
     ngh=self.Nghc
     self.dm.troubles[...] = 0
-    self.fill_active_region(self.dm.W_cv)
+    W_old = self.compute_primitives(self.dm.U_cv)
+    # W_old -> s.dm.M_fv
+    self.fill_active_region(W_old)
     W_new = self.compute_primitives(self.dm.U_new)
     ##############################################
     # NAD Check for numerically adimissible values
     ##############################################
     # First check if DMP criteria is met, if it is we can avoid computing alpha
-    # W_old -> s.dm.M_fv
     for dim in self.dims2:
         self.fv_Boundaries(self.dm.M_fv,dim)
     W_max = self.dm.M_fv.copy()
@@ -33,9 +34,9 @@ def detect_troubles(self: Simulator):
     possible_trouble = np.where(W_new <= W_max, possible_trouble, 1)
        
     # Now check for smooth extrema and relax the criteria for such cases
-    if np.any(possible_trouble) and self.p > 1:
+    if np.any(possible_trouble) and self.p > 1 and self.SED:
         self.fill_active_region(W_new)
-        alpha = W_new.copy()*0 + 1
+        alpha = W_new*0 + 1
         for dim in self.dims2:
             shift = self.dims2[dim]
             self.fv_Boundaries(self.dm.M_fv,dim)
@@ -44,8 +45,9 @@ def detect_troubles(self: Simulator):
 
         possible_trouble *= np.where(alpha<1, 1, 0)
 
-    self.dm.troubles[...] = np.amax(possible_trouble,axis=0)
-
+    #self.dm.troubles[...] = np.amax(possible_trouble,axis=0)
+    self.dm.troubles[...] = np.maximum(possible_trouble[self._d_],possible_trouble[self._p_])
+    #self.dm.possible_troubles = possible_trouble
     ###########################
     # PAD Check for physically admissible values
     ###########################
@@ -62,6 +64,7 @@ def detect_troubles(self: Simulator):
             W_new[self._p_, ...] >= self.min_P, self.dm.troubles, 1)
 
     #self.n_troubles += self.dm.troubles.sum()
+    self.dm.M_fv[...] = 0
     self.fill_active_region(self.dm.troubles)
     for dim in self.dims2:
         self.fv_Boundaries(self.dm.M_fv,dim)
@@ -77,11 +80,6 @@ def detect_troubles(self: Simulator):
         affected_faces = self.dm.__getattribute__(f"affected_faces_{dim}")
         affected_faces[...] = 0
         affected_faces[...] = np.maximum(theta[self.crop_fv(ngh-1,-ngh,idim,ngh)],theta[self.crop_fv(ngh,-(ngh-1),idim,ngh)])
-        
-        #if self.BC[dim] == "periodic":
-        #    affected = np.maximum(affected_faces[indices(0,idim)],affected_faces[indices(-1,idim)])
-        #    affected_faces[indices(0,idim)] = affected_faces[indices(-1,idim)] = affected
-
 
 def compute_W_ex(W, dim, f):
     W_f = W.copy()
@@ -89,7 +87,7 @@ def compute_W_ex(W, dim, f):
     # First comparing W(i) and W(i+1)
     W_f[cut(None,-1,dim)] = f(  W[cut(None,-1,dim)],W[cut(1, None,dim)])
     # Now comparing W_f(i) and W_(i-1)
-    W_f[cut( 1,None,dim)] = f(W_f[cut( 1,None,dim)],W[cut(None,-1,dim)])
+    W_f[cut( 1,None,dim)] = f(W_f[cut( 1,None,dim)],W_f[cut(None,-1,dim)])
     return W_f
 
 def compute_W_max(W, dim):
@@ -134,6 +132,9 @@ def compute_smooth_extrema(self, U, dim):
     return alphaL
 
 def apply_blending(self,trouble,theta):
+    a = slice(None,-1)
+    b = slice( 1,None)
+    cuts = [(a,a),(a,b),(b,a),(b,b)]
     #First neighbors
     for idim in self.dims:
         theta[cut(None,-1,idim)] = np.maximum(.75*trouble[cut( 1,None,idim)],theta[cut(None,-1,idim)])
@@ -141,26 +142,23 @@ def apply_blending(self,trouble,theta):
           
     if self.ndim==2:
         #Second neighbors
-        theta[:-1,:-1] = np.maximum(.5*trouble[1: ,1: ],theta[:-1,:-1])
-        theta[:-1,1: ] = np.maximum(.5*trouble[1: ,:-1],theta[:-1,1: ])
-        theta[1: ,:-1] = np.maximum(.5*trouble[:-1,1: ],theta[1: ,:-1])
-        theta[1: ,1: ] = np.maximum(.5*trouble[:-1,:-1],theta[1: ,1: ])
-
+        for i in range(len(cuts)):
+            theta[cuts[i]] = np.maximum(.5*trouble[cuts[::-1][i]],theta[cuts[i]])
+                
     elif self.ndim==3:
         #Second neighbors
-        a = slice(None,-1)
-        b = slice( 1,None)
-        cuts = [(a,a),(a,b),(b,a),(b,b)]
         for i in range(len(cuts)):
             for idim in self.dims:
                 shape1 = tuple(np.roll(np.array((slice(None),)+cuts[ i]),-idim))
                 shape2 = tuple(np.roll(np.array((slice(None),)+cuts[::-1][-i]),-idim))
                 theta[shape1] = np.maximum(.5*trouble[shape2],theta[shape1])
         #Third neighbors
-        cuts = [(x,y,z) for x in (a,b) for y in (a,b) for z in (a,b)]
+        cuts1 = [(x,y,z) for x in (a,b) for y in (a,b) for z in (a,b)]
+        cuts2 = [(x,y,z) for x in (b,a) for y in (b,a) for z in (b,a)]
         for i in range(len(cuts)):
-            self.dm.theta[cuts[i]] = np.maximum(.375*trouble[cuts[::-1][i]],self.dm.theta[cuts[i]])
-        
+            theta[cuts1[i]] = np.maximum(.375*trouble[cuts2[i]],theta[cuts1[i]])
+    
+    #Last layer
     for idim in self.dims:
         theta[cut(None,-1,idim)] = np.maximum(.25*(theta[cut( 1,None,idim)]>0),theta[cut(None,-1,idim)])
         theta[cut( 1,None,idim)] = np.maximum(.25*(theta[cut(None,-1,idim)]>0),theta[cut( 1,None,idim)])

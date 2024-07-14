@@ -25,23 +25,23 @@ class FV_Simulator(Simulator):
         self.slope_limiter = slope_limiter
         self.predictor = predictor
 
-    def array_FV(self,n,nvar,dim=None,ngh=0)->np.ndarray:
+    def array_FV(self,nvar,dim=None,ngh=0)->np.ndarray:
         shape = [nvar] 
         if self.Z:
-            shape += [self.Nz*n+(dim=="z")+2*ngh]
+            shape += [self.Nz+(dim=="z")+2*ngh]
         if self.Y:
-            shape += [self.Ny*n+(dim=="y")+2*ngh]
-        shape += [self.Nx*n+(dim=="x")+2*ngh]
+            shape += [self.Ny+(dim=="y")+2*ngh]
+        shape += [self.Nx+(dim=="x")+2*ngh]
         return np.ndarray(shape)
     
     def array_FV_BC(self,dim="x")->np.ndarray:
         shape = [2,self.nvar]
         ngh=self.Nghc
         if self.Z:
-            shape += [self.Nz*self.nz+2*ngh] if dim!="z" else [ngh]
+            shape += [self.Nz+2*ngh] if dim!="z" else [ngh]
         if self.Y:
-            shape += [self.Ny*self.ny+2*ngh] if dim!="y" else [ngh]
-        shape += [self.Nx*self.nx+2*ngh] if dim!="x" else [ngh]
+            shape += [self.Ny+2*ngh] if dim!="y" else [ngh]
+        shape += [self.Nx+2*ngh] if dim!="x" else [ngh]
         return np.ndarray(shape)
     
     def fv_arrays(self)->None:
@@ -99,7 +99,7 @@ class FV_Simulator(Simulator):
             dUdt += (self.F_faces[dim][cut(1,None,shift)]
                              -self.F_faces[dim][cut(None,-1,shift)])/dx
         
-        self.dm.U_new -= dUdt*dt
+        self.dm.U_new[...] = self.dm.U_cv - dUdt*dt
 
     def fv_update(self):
         self.dm.U_new[...] = self.dm.U_cv
