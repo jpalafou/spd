@@ -19,6 +19,7 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
                  FB: bool = False,
                  tolerance: float = 1e-5,
                  SED: bool = True,
+                 NAD: str = "",
                  PAD: bool = True,
                  blending: bool = True,
                  min_rho: float = 1e-10,
@@ -31,6 +32,7 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         self.FB = FB
         self.tolerance = tolerance
         self.SED = SED
+        self.NAD = NAD
         self.PAD = PAD
         self.blending = blending
         self.min_rho = min_rho
@@ -56,6 +58,8 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
             self.init_fv_Boundaries(self.W_gh)
         if self.potential:
             self.init_potential()
+        if self.WB:
+            self.init_equilibrium_state()
 
     def compute_positions(self):
         na = np.newaxis
@@ -399,3 +403,37 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
             self.dm.grad_phi_sp[idim] = self.crop(self.compute_sp_from_dfp(phi_fp, dim))/self.h[dim]
             # Now for the finite volume update
         self.dm.grad_phi_fv = self.transpose_to_fv(self.compute_cv_from_sp(self.dm.grad_phi_sp))
+
+    def init_equilibrium_state(self) -> None:
+        p = self.p
+        nvar = self.nvar
+        ngh = self.Nghe
+        W_gh = self.array_sp(ngh=ngh)
+        for var in range(nvar):
+            W_gh[var] = quadrature_mean(self.mesh_cv, self.eq_fct, self.ndim, var)
+        
+        W_sp = self.compute_sp_from_cv(W_gh)
+        U_sp = self.compute_conservatives(W_sp)
+        self.dm.U_eq_sp = self.crop(U_sp)
+        self.dm.U_eq_cv = self.compute_cv_from_sp(self.dm.U_eq_sp)
+        
+        for dim in self.dims2:
+            idim = self.dims2[dim]
+            vels = np.roll(self.vels,-idim)
+            U = self.compute_fp_from_sp(U_sp,dim)
+            self.dm.__setattr__(f"U_eq_fp_{dim}",self.crop(U))
+            #We force the equilibrium values at flux points to match between elements
+            #Pending
+            F = U.copy()
+            W = self.compute_primitives(U)
+            self.compute_fluxes(F,W,vels,prims=True)
+            self.dm.__setattr__(f"F_eq_fp_{dim}",self.crop(F))
+            
+            if self.update=="FV":
+                W_faces = self.integrate_faces(W,dim,ader=False)[cut(None,-1,idim)]
+                W_faces = self.transpose_to_fv(W_faces)
+                W_faces = W_faces[self.crop_fv(p+1,-p,idim,p+1)]
+                self.dm.__setattr__(f"W_eq_faces_{dim}",W_faces)
+                F=W_faces.copy()
+                self.compute_fluxes(F,W_faces,vels,prims=True)
+                self.dm.__setattr__(f"F_eq_faces_{dim}",F)

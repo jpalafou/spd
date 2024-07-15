@@ -13,6 +13,7 @@ class Simulator:
     def __init__(
         self,
         init_fct: Callable = sine_wave,
+        eq_fct: Callable = sine_wave,
         p: int =  1, 
         m: int = -1,
         Nx: int = 32,
@@ -31,10 +32,12 @@ class Simulator:
         min_c2: float = 1E-10,
         viscosity: bool = False,
         potential: bool = False,
+        WB: bool = False,
         use_cupy: bool = True,
         BC: Tuple = ("periodic","periodic","periodic"),
     ):
         self.init_fct = init_fct
+        self.eq_fct = eq_fct
         if m==-1:
             #By default m=p
             m=p
@@ -60,6 +63,7 @@ class Simulator:
         self.min_c2 = min_c2
         self.viscosity = viscosity
         self.potential = potential
+        self.WB = WB
 
         assert len(BC) >= ndim
         self.BC = defaultdict(list)
