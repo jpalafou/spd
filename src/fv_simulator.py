@@ -98,7 +98,12 @@ class FV_Simulator(Simulator):
             dx = dx[(None,)*(ndim-shift)+(slice(None),)+(None,)*(shift)]
             dUdt += (self.F_faces[dim][cut(1,None,shift)]
                              -self.F_faces[dim][cut(None,-1,shift)])/dx
-        
+            
+        if self.potential:
+            self.apply_potential(dUdt,
+                                 self.dm.U_cv,
+                                 self.dm.grad_phi_fv)
+
         self.dm.U_new[...] = self.dm.U_cv - dUdt*dt
 
     def fv_update(self):
@@ -119,6 +124,8 @@ class FV_Simulator(Simulator):
         if self.BC[dim] == "periodic":
             self.BC_fv[dim][0] = M[cut(-2*ngh,  -ngh,idim)]
             self.BC_fv[dim][1] = M[cut(   ngh, 2*ngh,idim)]
+        elif self.BC[dim] == "pressure":
+            next
         else:
             raise("Undetermined boundary type")
                          
@@ -129,7 +136,6 @@ class FV_Simulator(Simulator):
         """
         ngh=self.Nghc
         idim = self.dims2[dim]
-        shift=self.ndim+self.dims2[dim]-1
         self.dm.M_fv[cut(None, ngh,idim)] = self.BC_fv[dim][0]
         self.dm.M_fv[cut(-ngh,None,idim)] = self.BC_fv[dim][1]
 
@@ -139,3 +145,15 @@ class FV_Simulator(Simulator):
         self.fv_store_BC(M,dim)
         #Comms here
         self.fv_apply_BC(dim)
+
+    def init_fv_Boundaries(self, M) -> None:
+        ngh=self.Nghc
+        p = self.p
+        if p>1:
+            M = M[self.crop_fv(p-1,-(p-1),0,p-1)]
+        for dim in self.dims2:
+            idim = self.dims2[dim]
+            BC_fv = self.dm.__getattribute__(f"BC_fv_{dim}")
+            BC_fv[0][...] = M[cut(None, ngh,idim)]
+            BC_fv[1][...] = M[cut(-ngh,None,idim)]
+      

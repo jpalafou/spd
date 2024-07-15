@@ -67,7 +67,8 @@ def detect_troubles(self: Simulator):
     self.dm.M_fv[...] = 0
     self.fill_active_region(self.dm.troubles)
     for dim in self.dims2:
-        self.fv_Boundaries(self.dm.M_fv,dim)
+        if self.BC[dim] == "periodic":
+            self.fv_Boundaries(self.dm.M_fv,dim)
     trouble = self.dm.M_fv[0]
     self.dm.theta[0][...] = trouble
     theta = self.dm.theta[0]

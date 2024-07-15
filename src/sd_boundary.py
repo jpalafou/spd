@@ -50,6 +50,10 @@ def store_BC(self: SD_Simulator,
     elif self.BC[dim] == "gradfree":
         BC_array[0] = M[indices2( 0,self.ndim,idim)]
         BC_array[1] = M[indices2(-1,self.ndim,idim)]
+    elif self.BC[dim] == "pressure":
+        #Overwrite solution with ICs
+        M[indices2( 0,self.ndim,idim)] = BC_array[0]
+        M[indices2(-1,self.ndim,idim)] = BC_array[1]
     else:
         raise("Undetermined boundary type")
                          
@@ -66,7 +70,7 @@ def apply_BC(self: SD_Simulator,
 def Boundaries_sd(self: SD_Simulator,
                   M: np.ndarray,
                   dim: str):
-    store_interfaces(self,M,dim)
     store_BC(self,self.BC_fp[dim],M,dim)
+    store_interfaces(self,M,dim)
             #Here would go the BC comms between different domains
     apply_BC(self,dim)

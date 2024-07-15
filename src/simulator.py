@@ -30,6 +30,7 @@ class Simulator:
         cfl_coeff: float = 0.8,
         min_c2: float = 1E-10,
         viscosity: bool = False,
+        potential: bool = False,
         use_cupy: bool = True,
         BC: Tuple = ("periodic","periodic","periodic"),
     ):
@@ -58,6 +59,7 @@ class Simulator:
         self.cfl_coeff = cfl_coeff
         self.min_c2 = min_c2
         self.viscosity = viscosity
+        self.potential = potential
 
         assert len(BC) >= ndim
         self.BC = defaultdict(list)
@@ -68,7 +70,7 @@ class Simulator:
         for dim in range(ndim):
             self.dims[dim] = dims[dim]
             self.dims2[dims[dim]] = dim
-            self.BC[dims[dim]] = BC[0]
+            self.BC[dims[dim]] = BC[dim]
                 
         self.dm = GPUDataManager(use_cupy)
 
@@ -176,6 +178,15 @@ class Simulator:
             W = self.compute_primitives(M)
         return hydro.compute_viscous_fluxes(W,vels,dMs,self._p_,self.nu,self.beta)
 
+    def apply_potential(self,dUdt,U,grad_phi):
+        _p_ = self._p_
+        for idim in self.dims:
+            vel = self.vels[idim]
+            dUdt[vel,...] += U[  0]*grad_phi[idim]
+            dUdt[_p_,...] += U[vel]*grad_phi[idim]
+            
     def compute_dt(self) -> None:
         pass
+
+    
 

@@ -22,11 +22,13 @@ class SD_Simulator(Simulator):
     def __init__(
         self,
         riemann_solver_sd: Callable = rs.llf,
+        update: str = "SD",
         *args,
         **kwargs
     ):
         super().__init__(*args, **kwargs)
         self.riemann_solver_sd = riemann_solver_sd
+        self.update = update
         self.x, self.w = gauss_legendre_quadrature(0.0, 1.0, self.p)
         sp = solution_points(0.0, 1.0, self.p)
         fp = flux_points(0.0, 1.0, self.p)
@@ -85,6 +87,9 @@ class SD_Simulator(Simulator):
         self.dm.W_sp = self.compute_sp_from_cv(self.dm.W_cv)
         self.dm.U_sp = self.compute_conservatives(self.dm.W_sp)
         self.dm.U_cv = self.compute_conservatives(self.dm.W_cv)
+
+        if self.update=="FV":
+            self.W_gh = self.transpose_to_fv(W_gh)
     
     def regular_mesh(self,W):
         #Interpolate to a regular mesh
@@ -94,7 +99,7 @@ class SD_Simulator(Simulator):
         x_sp = solution_points(0.0, 1.0, p)
         m = lagrange_matrix(x, x_sp)
         W_r = compute_A_from_B_full(W,m,self.ndim)
-        return self.transpose_to_fv(W_r)
+        return W_r
     
     def transpose_to_fv(self,M):
         #nvar,Nz,Ny,Nx,nz,ny,nx
@@ -225,10 +230,8 @@ class SD_Simulator(Simulator):
         W = self.dm.W_cv
         c_s = hydro.compute_cs(W[self._p_],W[self._d_],self.gamma,self.min_c2)
         c = np.abs(W[self._vx_])+c_s
-        if self.Y:
-            c += np.abs(W[self._vy_])+c_s
-        if self.Z:
-            c += np.abs(W[self._vz_])+c_s
+        for vel in self.vels[1:]:
+            c += np.abs(W[vel])+c_s
         c_max = np.max(c)
         h = self.h_min/(self.p + 1) 
         dt = h/c_max 

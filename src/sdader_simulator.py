@@ -7,6 +7,7 @@ from fv_simulator import FV_Simulator
 from data_management import CupyLocation
 from polynomials import gauss_legendre_quadrature
 from polynomials import ader_matrix
+from polynomials import quadrature_mean
 import sd_boundary as bc
 import riemann_solver as rs
 from trouble_detection import detect_troubles
@@ -15,7 +16,6 @@ from slicing import cut, indices, indices2
 
 class SDADER_Simulator(SD_Simulator,FV_Simulator):
     def __init__(self,
-                 update: str = "SD",
                  FB: bool = False,
                  tolerance: float = 1e-5,
                  SED: bool = True,
@@ -28,7 +28,6 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
                  *args,
                  **kwargs):
         super().__init__(*args, **kwargs)
-        self.update = update
         self.FB = FB
         self.tolerance = tolerance
         self.SED = SED
@@ -49,10 +48,14 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
 
         self.ader_arrays()
         self.compute_positions()
-        if update=="FV":
+        self.init_sd_Boundaries()
+        if self.update=="FV":
             self.fv_arrays()
             if FB:
                 self.fb_arrays()
+            self.init_fv_Boundaries(self.W_gh)
+        if self.potential:
+            self.init_potential()
 
     def compute_positions(self):
         na = np.newaxis
@@ -148,6 +151,10 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
             dUdt += self.compute_sp_from_dfp_y()
         if self.Z:
             dUdt += self.compute_sp_from_dfp_z()
+        if self.potential:
+            self.apply_potential(dUdt,
+                                 self.dm.U_ader_sp,
+                                 self.dm.grad_phi_sp[:,np.newaxis])
         return dUdt
 
     def ader_predictor(self,prims: bool = False) -> None:
@@ -371,3 +378,24 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
                 break
             self.status = self.perform_update()
         self.end_sim()          
+
+    def init_sd_Boundaries(self) -> None:
+        #This is necessary when the BCs are the ICs
+        ndim=self.ndim
+        for dim in self.dims2:
+            idim = self.dims2[dim]
+            BC = self.dm.__getattribute__(f"BC_fp_{dim}")
+            M_fp = self.compute_fp_from_sp(self.dm.U_sp,dim)
+            BC[0][...] =  M_fp[:,np.newaxis][indices2( 0,ndim,idim)]
+            BC[1][...] =  M_fp[:,np.newaxis][indices2(-1,ndim,idim)]
+
+    def init_potential(self) -> None:
+        phi_cv = quadrature_mean(self.mesh_cv, self.init_fct, self.ndim, -1)
+        phi_sp = self.compute_sp_from_cv(phi_cv[None])
+        self.dm.grad_phi_sp = self.array_sp()[:self.ndim]
+        for dim in self.dims2:
+            idim = self.dims2[dim]
+            phi_fp = self.compute_fp_from_sp(phi_sp,dim)
+            self.dm.grad_phi_sp[idim] = self.crop(self.compute_sp_from_dfp(phi_fp, dim))/self.h[dim]
+            # Now for the finite volume update
+        self.dm.grad_phi_fv = self.transpose_to_fv(self.compute_cv_from_sp(self.dm.grad_phi_sp))
