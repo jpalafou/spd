@@ -34,7 +34,9 @@ class Simulator:
         potential: bool = False,
         WB: bool = False,
         use_cupy: bool = True,
-        BC: Tuple = ("periodic","periodic","periodic"),
+        BC: Tuple = (("periodic","periodic"),
+                     ("periodic","periodic"),
+                     ("periodic","periodic")),
     ):
         self.init_fct = init_fct
         self.eq_fct = eq_fct
@@ -66,9 +68,9 @@ class Simulator:
         self.WB = WB
 
         assert len(BC) >= ndim
-        self.BC = defaultdict(list)
-        self.dims = defaultdict(list)
-        self.dims2 = defaultdict(list)
+        self.BC = {}
+        self.dims = {}
+        self.dims2 = {}
         
         dims = ["x","y","z"]
         for dim in range(ndim):

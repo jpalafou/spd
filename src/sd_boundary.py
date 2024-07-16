@@ -40,22 +40,20 @@ def store_BC(self: SD_Simulator,
     """    
     na=np.newaxis
     idim = self.dims2[dim]
-    if self.BC[dim] == "periodic":
-        BC_array[0] = M[indices2(-1,self.ndim,idim)]
-        BC_array[1] = M[indices2( 0,self.ndim,idim)]
-    elif self.BC[dim] == "reflective":
-        BC_array[0] = M[indices2( 0,self.ndim,idim)]
-        BC_array[1] = M[indices2(-1,self.ndim,idim)]
-        BC_array[:,self.dims2[dim]] = -BC_array[:,self.dims2[dim]]
-    elif self.BC[dim] == "gradfree":
-        BC_array[0] = M[indices2( 0,self.ndim,idim)]
-        BC_array[1] = M[indices2(-1,self.ndim,idim)]
-    elif self.BC[dim] == "pressure":
-        #Overwrite solution with ICs
-        M[indices2( 0,self.ndim,idim)] = BC_array[0]
-        M[indices2(-1,self.ndim,idim)] = BC_array[1]
-    else:
-        raise("Undetermined boundary type")
+    BC = self.BC[dim]
+    for side in [0,1]:
+        if  BC[side] == "periodic":
+            BC_array[side] = M[indices2(side-1,self.ndim,idim)]
+        elif BC[side] == "reflective":
+            BC_array[side] = M[indices2(-side,self.ndim,idim)]
+            BC_array[side,self.vels[idim]] *= -1
+        elif BC[side] == "gradfree":
+            BC_array[side] = M[indices2(-side,self.ndim,idim)]
+        elif BC[side] == "pressure":
+            #Overwrite solution with ICs
+            M[indices2(-side,self.ndim,idim)] = BC_array[side]
+        else:
+            raise("Undetermined boundary type")
                          
 def apply_BC(self: SD_Simulator,
              dim: str) -> None:

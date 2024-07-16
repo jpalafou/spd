@@ -115,13 +115,21 @@ class FV_Simulator(Simulator):
         na=np.newaxis
         idim = self.dims2[dim]
         ngh=self.Nghc
-        if self.BC[dim] == "periodic":
-            self.BC_fv[dim][0] = M[cut(-2*ngh,  -ngh,idim)]
-            self.BC_fv[dim][1] = M[cut(   ngh, 2*ngh,idim)]
-        elif self.BC[dim] == "pressure":
-            next
-        else:
-            raise("Undetermined boundary type")
+        BC = self.BC[dim]
+        cuts=(cut(-2*ngh,  -ngh,idim),
+              cut(   ngh, 2*ngh,idim))
+        for side in [0,1]:
+            if  BC[side] == "periodic":
+                self.BC_fv[dim][side] = M[cuts[side]]
+            elif BC[side] == "reflective":
+                self.BC_fv[dim][side] = M[cuts(1-side)]
+                self.BC_fv[dim][side][self.vels[idim]] *= -1
+            elif BC[side] == "gradfree":
+                self.BC_fv[dim][side] = M[cuts(1-side)]
+            elif self.BC[dim] == "pressure":
+                next
+            else:
+                raise("Undetermined boundary type")
                          
     def fv_apply_BC(self,
                  dim: str) -> None:
