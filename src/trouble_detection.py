@@ -1,11 +1,11 @@
 import numpy as np
 from simulator import Simulator
-from slicing import cut
-from slicing import indices
+from slicing import cut, crop_fv
 
 def detect_troubles(self: Simulator):
     # Reset to check troubled control volumes
     ngh=self.Nghc
+    crop = lambda start,end,idim : crop_fv(start,end,idim,self.ndim,ngh)
     self.dm.troubles[...] = 0
     W_old = self.compute_primitives(self.dm.U_cv)
     # W_old -> s.dm.M_fv
@@ -27,8 +27,13 @@ def detect_troubles(self: Simulator):
     W_min = self.crop(W_min,ngh=ngh)
     
     if self.p > 0:
-        W_min -= np.abs(W_min) * self.tolerance
-        W_max += np.abs(W_max) * self.tolerance
+        if self.NAD == "delta":
+            epsilon = self.tolerance*(W_max-W_min)
+            W_min -= epsilon 
+            W_max += epsilon
+        else:
+            W_min -= np.abs(W_min) * self.tolerance
+            W_max += np.abs(W_max) * self.tolerance
 
     possible_trouble = np.where(W_new >= W_min, 0, 1)
     possible_trouble = np.where(W_new <= W_max, possible_trouble, 1)
@@ -40,7 +45,7 @@ def detect_troubles(self: Simulator):
         for dim in self.dims2:
             shift = self.dims2[dim]
             self.fv_Boundaries(self.dm.M_fv,dim)
-            alpha_new = compute_smooth_extrema(self, self.dm.M_fv, dim)[self.crop_fv(None,None,shift,ngh)]
+            alpha_new = compute_smooth_extrema(self, self.dm.M_fv, dim)[crop(None,None,shift)]
             alpha = np.where(alpha_new < alpha, alpha_new, alpha)
 
         possible_trouble *= np.where(alpha<1, 1, 0)
@@ -80,7 +85,7 @@ def detect_troubles(self: Simulator):
         idim = self.dims2[dim]
         affected_faces = self.dm.__getattribute__(f"affected_faces_{dim}")
         affected_faces[...] = 0
-        affected_faces[...] = np.maximum(theta[self.crop_fv(ngh-1,-ngh,idim,ngh)],theta[self.crop_fv(ngh,-(ngh-1),idim,ngh)])
+        affected_faces[...] = np.maximum(theta[crop(ngh-1,-ngh,idim)],theta[crop(ngh,-(ngh-1),idim)])
 
 def compute_W_ex(W, dim, f):
     W_f = W.copy()

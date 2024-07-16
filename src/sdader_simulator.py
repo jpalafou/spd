@@ -12,7 +12,7 @@ import sd_boundary as bc
 import riemann_solver as rs
 from trouble_detection import detect_troubles
 from timeit import default_timer as timer
-from slicing import cut, indices, indices2
+from slicing import cut, indices, indices2, crop_fv
 
 class SDADER_Simulator(SD_Simulator,FV_Simulator):
     def __init__(self,
@@ -239,6 +239,7 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
             #Compute gradient of primitive variables at flux points
             self.M_ader_fp[dim][...] = self.compute_primitives(self.M_ader_fp[dim])
             bc.Boundaries_sd(self,self.M_ader_fp[dim],dim)
+            #Make a choice of values (here left)
             M = self.ML_fp[dim]
             bc.apply_interfaces(self,M,self.M_ader_fp[dim],dim)
             dW_sp[idim] = self.compute_gradient(self.M_ader_fp[dim],dim)
@@ -250,6 +251,7 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
                 #Interpolate gradients(all directions) to flux points at dim
                 dW_fp[idim] = self.compute_fp_from_sp(dW_sp[idim],dim,ader=True)
                 bc.Boundaries_sd(self,dW_fp[idim],dim)
+                #Counter the previous choice of values (now right)
                 dW = self.MR_fp[dim]
                 bc.apply_interfaces(self,dW,dW_fp[idim],dim)
             #Add viscous flux
@@ -405,7 +407,9 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         self.dm.grad_phi_fv = self.transpose_to_fv(self.compute_cv_from_sp(self.dm.grad_phi_sp))
 
     def init_equilibrium_state(self) -> None:
+        crop = lambda start,end,idim,ngh : crop_fv(start,end,idim,self.ndim,ngh)
         p = self.p
+        n = p+1
         nvar = self.nvar
         ngh = self.Nghe
         W_gh = self.array_sp(ngh=ngh)
@@ -416,7 +420,6 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         U_sp = self.compute_conservatives(W_sp)
         self.dm.U_eq_sp = self.crop(U_sp)
         self.dm.U_eq_cv = self.compute_cv_from_sp(self.dm.U_eq_sp)
-        
         for dim in self.dims2:
             idim = self.dims2[dim]
             vels = np.roll(self.vels,-idim)
@@ -432,8 +435,11 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
             if self.update=="FV":
                 W_faces = self.integrate_faces(W,dim,ader=False)[cut(None,-1,idim)]
                 W_faces = self.transpose_to_fv(W_faces)
-                W_faces = W_faces[self.crop_fv(p+1,-p,idim,p+1)]
+                W_faces = W_faces[crop(p+1,-p,idim,p+1)]
                 self.dm.__setattr__(f"W_eq_faces_{dim}",W_faces)
                 F=W_faces.copy()
                 self.compute_fluxes(F,W_faces,vels,prims=True)
                 self.dm.__setattr__(f"F_eq_faces_{dim}",F)
+        ngh = self.Nghc
+        if self.update=="FV":
+            self.dm.M_eq_fv = self.transpose_to_fv(W_gh)[crop(n-ngh,-(n-ngh),0,n-ngh)]

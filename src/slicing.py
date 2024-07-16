@@ -23,3 +23,9 @@ def indices2(i: int,
     Returns a tuple to be used when slicing multidimensional arrays
     """
     return indices(i,ndim-1) + (i,) + tuple(repeat(slice(None),dim))
+
+def crop_fv(start,end,dim,ndim,ngh)->Tuple:
+    if ngh==None:
+        return (Ellipsis,)+(slice(ngh,ngh),)*(ndim-1-dim)+(slice(start,end),)+(slice(ngh,ngh),)*dim
+    else:
+        return (Ellipsis,)+(slice(ngh,-ngh),)*(ndim-1-dim)+(slice(start,end),)+(slice(ngh,-ngh),)*dim

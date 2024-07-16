@@ -44,7 +44,7 @@ def llf(
         
     return 0.5*(F_R+F_L)-0.5*c_max*(U_R-U_L)
 
-def solve_riemann_hllc(
+def hllc(
     M_L: np.ndarray,
     M_R: np.ndarray,
     vels: np.array,

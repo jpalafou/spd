@@ -6,6 +6,7 @@ from itertools import repeat
 from simulator import Simulator
 
 from slicing import cut
+from slicing import crop_fv
 
 def minmod(SlopeL,SlopeR):
     #First compute ratio between slopes SlopeR/SlopeL
@@ -23,18 +24,43 @@ def moncen(dU_L,dU_R,dx_L,dx_R,dx_M):
     slope = np.sign(dU_C)*np.minimum(slope,np.abs(dU_C))
     return np.where(dU_L*dU_R>=0,slope,0)     
 
-def compute_slopes(self: Simulator, dU, dim):
-        if self.slope_limiter == "minmod":
-            return minmod(dU[cut(None,-1,dim)],dU[cut(1,None,dim)])
+def compute_slopes(self: Simulator, M, dim, gradient=False):
+    """
+    args: 
+        M: ndarray
+        dim: int
+    out:
+        S: ndarray = Slopes of M
+        dMh: ndarray = Gradient of M
+    """
+    h_cv = self.h_cv[self.dims[dim]]
+    h_fp = self.h_fp[self.dims[dim]]
+    dM = (M[cut(1,None,dim)] - M[cut(None,-1,dim)])/h_cv
+    if self.slope_limiter == "minmod":
+        dMh = minmod(dM[cut(None,-1,dim)],dM[cut(1,None,dim)])
 
-        elif self.slope_limiter == "moncen":
-            h_cv = self.h_cv[self.dims[dim]]
-            h_fp = self.h_fp[self.dims[dim]]
-            return moncen(dU[cut(None,-1,dim)],
-                      dU[cut(1,None,dim)],
-                      h_cv[cut(None,-1,dim)],
-                      h_cv[cut(1,None,dim)],
-                      h_fp[cut(1,-1,dim)])
+    elif self.slope_limiter == "moncen":
+        dMh = moncen(dM[cut(None,-1,dim)],
+                  dM[cut(1,None,dim)],
+                  h_cv[cut(None,-1,dim)],
+                  h_cv[cut(1,None,dim)],
+                  h_fp[cut(1,-1,dim)])
+    if gradient:
+        return dMh
+    else:
+        return 0.5*dMh*h_fp[cut(1,-1,dim)] #Slope*h/2
+
+def interpolate_R(self: Simulator, M, S, idim):
+    #UR = U - SlopeC*h/2
+    ngh=self.Nghc
+    crop = lambda start,end,idim : crop_fv(start,end,idim,self.ndim,ngh)
+    return M[crop(ngh,-1,idim)] - S[crop( 1,None,idim)]
+
+def interpolate_L(self: Simulator, M, S, idim):
+    #UL = U + SlopeC*h/2
+    ngh=self.Nghc
+    crop = lambda start,end,idim : crop_fv(start,end,idim,self.ndim,ngh)
+    return M[crop(1,-ngh,idim)] + S[crop(None,-1,idim)]        
                 
 def MUSCL_fluxes(self: Simulator, dt: float, prims=True):
     ngh = self.Nghc
@@ -46,15 +72,11 @@ def MUSCL_fluxes(self: Simulator, dt: float, prims=True):
     for dim in self.dims2:
         shift=self.dims2[dim]
         vels = np.roll(self.vels,-shift)
-        h_cv = self.h_cv[dim]
-        h_fp = self.h_fp[dim]
         
-        dM = (self.dm.M_fv[cut(1,None,shift)] - self.dm.M_fv[cut(None,-1,shift)])/h_cv
-        dMh = compute_slopes(self,dM,shift)    
-        S = 0.5*dMh*h_fp[cut(1,-1,shift)] #Slope*h/2  
-        #UR = U - SlopeC*h/2, UL = U + SlopeC*h/2
-        self.MR_faces[dim][...] = self.dm.M_fv[self.crop_fv(ngh,-1,shift,ngh)] - S[self.crop_fv( 1,None,shift,ngh)]
-        self.ML_faces[dim][...] = self.dm.M_fv[self.crop_fv(1,-ngh,shift,ngh)] + S[self.crop_fv(None,-1,shift,ngh)] 
+        S = compute_slopes(self,self.dm.M_fv,shift)    
+        
+        self.MR_faces[dim][...] = interpolate_R(self,self.dm.M_fv,S,shift)
+        self.ML_faces[dim][...] = interpolate_L(self,self.dm.M_fv,S,shift)
         self.F_faces_FB[dim] = self.riemann_solver_fv(self.ML_faces[dim], self.MR_faces[dim], vels, self._p_, self.gamma, self.min_c2, prims)
         
 def compute_prediction(self: Simulator, W, dWs):
@@ -73,31 +95,41 @@ def compute_prediction(self: Simulator, W, dWs):
 
 def MUSCL_Hancock_fluxes(self: Simulator, dt: float, prims=True):
     ngh = self.Nghc
-    self.dMh={}
-    self.S={}
+    dMhs={}
     self.dm.M_fv[...]  = 0
+    crop = lambda start,end,idim : crop_fv(start,end,idim,self.ndim,1)
     #Copy W_cv to active region of M_fv
     self.fill_active_region(self.dm.W_cv)
     for dim in self.dims2:
         self.fv_Boundaries(self.dm.M_fv,dim)
+    if self.WB:
+        #We move to the solution
+        self.dm.M_fv += self.dm.M_eq_fv
+
     for dim in self.dims2:
-        idim=self.dims2[dim]
-        h_cv = self.h_cv[dim]
-        h_fp = self.h_fp[dim]
-        dM = (self.dm.M_fv[cut(1,None,idim)] - self.dm.M_fv[cut(None,-1,idim)])/h_cv
-        dMh = compute_slopes(self,dM,idim)
-        #Slope*h/2    
-        S = 0.5*dMh*h_fp[cut(1,-1,idim)]
-        self.dMh[idim] = dMh[self.crop_fv(None,None,idim,1)]
-        self.S[idim] = S 
-    compute_prediction(self,self.dm.M_fv[self.crop_fv(1,-1,0,1)],self.dMh)
-    self.dm.M_fv[self.crop_fv(1,-1,0,1)] += 0.5*self.dm.dtM*dt
+        idim=self.dims2[dim] 
+        dMh = compute_slopes(self,self.dm.M_fv,idim,gradient=True)
+        dMhs[idim] = dMh[crop(None,None,idim)]
+        if self.WB:
+            dMh = compute_slopes(self,self.dm.M_eq_fv,idim,gradient=True)
+            dMhs[idim+self.ndim] = dMh[crop(None,None,idim)]
+                        
+    compute_prediction(self,self.dm.M_fv[crop(1,-1,0)],dMhs)
+    if self.WB:
+        if self.potential:
+            for vel in self.vels:
+                dVt = ((self.dm.M_fv[0]-self.dm.M_eq_fv[0])/self.dm.M_fv[0]*self.dm.grad_phi_fv[vel-1])
+                self.dm.dMt[vel] += dVt[crop(1,-1,0)]
+        #We move back to the perturbation
+        self.dm.M_fv -= self.dm.M_eq_fv
+
+    self.dm.M_fv[crop(1,-1,0)] += 0.5*self.dm.dtM*dt
     for dim in self.dims2:
         idim=self.dims2[dim]
         vels = np.roll(self.vels,-idim)
-        #UR = U - SlopeC*h/2, UL = U + SlopeC*h/2
-        self.MR_faces[dim][...] = self.dm.M_fv[self.crop_fv(ngh,-1,idim,ngh)] - self.S[idim][self.crop_fv( 1,None,idim,ngh)]
-        self.ML_faces[dim][...] = self.dm.M_fv[self.crop_fv(1,-ngh,idim,ngh)] + self.S[idim][self.crop_fv(None,-1,idim,ngh)] 
+        S = compute_slopes(self,self.dm.M_fv,idim) 
+        self.MR_faces[dim][...] = interpolate_R(self,self.dm.M_fv,S,idim)
+        self.ML_faces[dim][...] = interpolate_L(self,self.dm.M_fv,S,idim)
         self.F_faces_FB[dim] = self.riemann_solver_fv(self.ML_faces[dim], self.MR_faces[dim], vels, self._p_, self.gamma, self.min_c2, prims)
 
 def compute_viscosity(self: Simulator):
@@ -112,6 +144,7 @@ def compute_viscosity(self: Simulator):
     #    dW[idim] = (MR-ML)/h
     for dim in self.dims2:
         idim = self.dims2[dim]
+        #Make a choice of values (here left)
         M = self.ML_faces[dim]
         h = self.h_fp[dim][cut(ngh,-ngh,idim)]
         dW[idim] = (M[cut( 1,None,idim)]-M[cut(None,-1,idim)])/h
@@ -123,16 +156,14 @@ def compute_viscosity(self: Simulator):
         h_fp = self.h_fp[dim]
         for idim in self.dims:
             self.fill_active_region(dW[idim])
-            self.fv_Boundaries(self.dm.M_fv,dim)    
-            dM = (self.dm.M_fv[cut(1,None,shift)] - self.dm.M_fv[cut(None,-1,shift)])/h_cv
-            dMh = compute_slopes(self,dM,shift)
-            S = 0.5*dMh*h_fp[cut(1,-1,shift)] #Slope*h/2  
-            #UR = U - SlopeC*h/2, UL = U + SlopeC*h/2
-            dW_f[idim] = self.dm.M_fv[self.crop_fv(ngh,-1,shift,ngh)] - S[self.crop_fv( 1,None,shift,ngh)]
+            if self.BC[dim] == "periodic":
+                self.fv_Boundaries(self.dm.M_fv,dim)    
+            S = compute_slopes(self,self.dm.M_fv,shift)
+            #Counter the previous choice of values (now right)
+            dW_f[idim] = interpolate_R(self,self.dm.M_fv,S,shift)
         #Add viscous flux
         self.F_faces_FB[dim][...] -= self.compute_viscous_fluxes(self.ML_faces[dim],dW_f,vels,prims=True)
        
-                
 def compute_second_order_fluxes(self: Simulator,
                                 dt: float,
                                 **kwargs):

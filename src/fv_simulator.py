@@ -10,7 +10,7 @@ from simulator import Simulator
 import riemann_solver as rs
 import muscl
 
-from slicing import cut
+from slicing import cut, crop_fv
 
 class FV_Simulator(Simulator):
     def __init__(
@@ -78,12 +78,6 @@ class FV_Simulator(Simulator):
     def compute_fv_fluxes(self,dt: float)->None:
         return muscl.compute_second_order_fluxes(self, dt)
 
-    def crop_fv(self,start,end,dim,ngh)->Tuple:
-        if ngh==None:
-            return (Ellipsis,)+(slice(ngh,ngh),)*(self.ndim-1-dim)+(slice(start,end),)+(slice(ngh,ngh),)*dim
-        else:
-            return (Ellipsis,)+(slice(ngh,-ngh),)*(self.ndim-1-dim)+(slice(start,end),)+(slice(ngh,-ngh),)*dim
-
     def fill_active_region(self, M):
         ngh=self.Nghc
         self.dm.M_fv[(Ellipsis,)+tuple(repeat(slice(ngh,-ngh),self.ndim))] = M
@@ -148,9 +142,9 @@ class FV_Simulator(Simulator):
 
     def init_fv_Boundaries(self, M) -> None:
         ngh=self.Nghc
-        p = self.p
-        if p>1:
-            M = M[self.crop_fv(p-1,-(p-1),0,p-1)]
+        n = self.p+1
+        if n>2:
+            M = M[crop_fv(n-ngh,-(n-ngh),0,self.ndim,n-ngh)]
         for dim in self.dims2:
             idim = self.dims2[dim]
             BC_fv = self.dm.__getattribute__(f"BC_fv_{dim}")
