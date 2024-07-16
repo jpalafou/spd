@@ -170,6 +170,9 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         #   U_ader_sp: (nader,nvar,Nz,Ny,Nx,pz,py,px)
 
         # 1) Initialize u_ader_sp to u_sp, at all ADER time substeps.
+        if self.WB:
+            #U -> U'
+            self.dm.U_sp -= self.dm.U_eq_sp
         self.dm.U_ader_sp[...] = self.dm.U_sp[:,na, ...]
 
         # 2) ADER scheme (Picard iteration).
@@ -178,6 +181,8 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         for ader_iter in range(self.m + 1):
             if prims:
                 # Primitive variables
+                if self.WB:
+                    raise("SD: Well-balanced scheme is not enabled for interpolation over primitive variables")
                 M = self.compute_primitives(self.dm.U_ader_sp)   
             else:
                 # Otherwise conservative variables
@@ -202,8 +207,7 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
                 self.dm.U_ader_sp[...] = self.dm.U_sp[:,na] - self.dm.U_ader_sp
 
     def ader_update(self):
-        na = self.dm.xp.newaxis
-        # dUdt = (dFxdx +dFydy + S)dt 
+        # dUdt = (dFxdx + dFydy + dFzdz + S)dt 
         s = self.ader_string()
         dUdt = (np.einsum(f"t,ut{s}->u{s}",self.dm.w_tp,self.ader_dudt())*self.dm.dt)
 
@@ -221,10 +225,16 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
             dim = self.dims[key]
             vels = np.roll(self.vels,-key)
             self.M_ader_fp[dim][...] = self.compute_fp_from_sp(M,dim,ader=True)
+            if self.WB:
+                #U'->U
+                self.M_ader_fp[dim]+=self.dm.__getattribute__(f"M_eq_fp_{dim}")[:,na]
             self.compute_fluxes(self.F_ader_fp[dim], self.M_ader_fp[dim],vels,prims)
             bc.Boundaries_sd(self,self.M_ader_fp[dim],dim)
             F = self.riemann_solver_sd(self.ML_fp[dim], self.MR_fp[dim], vels, self._p_, self.gamma, self.min_c2, prims)
             bc.apply_interfaces(self,F,self.F_ader_fp[dim],dim)
+            if self.WB:
+                #F->F'
+                self.F_ader_fp[dim]+=self.dm.__getattribute__(f"F_eq_fp_{dim}")[:,na]
         
         if self.viscosity:
             self.add_viscosity()
@@ -283,6 +293,11 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         #Change to Finite Volume scheme
         self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp)
         self.dm.W_cv[...] = self.compute_primitives(self.dm.U_cv)
+        if self.WB:
+            #U_cv are perturbations up to this point
+            self.dm.W_cv[...]  = self.compute_primitives(self.dm.U_cv + self.dm.U_eq_cv)
+            self.dm.W_cv[...] -= self.compute_primitives(self.dm.U_eq_cv)
+            self.dm.U_eq_cv = self.transpose_to_fv(self.dm.U_eq_cv)
 
         self.dm.U_cv = self.transpose_to_fv(self.dm.U_cv)
         self.dm.W_cv = self.transpose_to_fv(self.dm.W_cv)
@@ -296,6 +311,15 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         self.dm.W_cv = self.transpose_to_sd(self.dm.W_cv)
         self.dm.U_sp[...] = self.compute_sp_from_cv(self.dm.U_cv)
         self.dm.W_sp[...] = self.compute_primitives(self.dm.U_sp)
+        if self.WB:
+            self.dm.U_eq_cv = self.transpose_to_sd(self.dm.U_eq_cv)
+            #U_cv and W_cv are perturbations up to this point
+            self.dm.U_sp[...] += self.dm.U_eq_sp
+            self.dm.W_sp[...] = self.compute_primitives(self.dm.U_sp)
+            #U_sp and W_sp are now solutions
+            #We switch U_cv and W_cv to be solutions
+            self.dm.U_cv += self.dm.U_eq_cv
+            self.dm.W_cv = self.compute_primitives(self.dm.W_cv)
 
     def store_high_order_fluxes(self,i_ader):
         ndim=self.ndim
@@ -424,7 +448,7 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
             idim = self.dims2[dim]
             vels = np.roll(self.vels,-idim)
             U = self.compute_fp_from_sp(U_sp,dim)
-            self.dm.__setattr__(f"U_eq_fp_{dim}",self.crop(U))
+            self.dm.__setattr__(f"M_eq_fp_{dim}",self.crop(U))
             #We force the equilibrium values at flux points to match between elements
             #Pending
             F = U.copy()
@@ -436,7 +460,7 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
                 W_faces = self.integrate_faces(W,dim,ader=False)[cut(None,-1,idim)]
                 W_faces = self.transpose_to_fv(W_faces)
                 W_faces = W_faces[crop(p+1,-p,idim,p+1)]
-                self.dm.__setattr__(f"W_eq_faces_{dim}",W_faces)
+                self.dm.__setattr__(f"M_eq_faces_{dim}",W_faces)
                 F=W_faces.copy()
                 self.compute_fluxes(F,W_faces,vels,prims=True)
                 self.dm.__setattr__(f"F_eq_faces_{dim}",F)

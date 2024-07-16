@@ -112,7 +112,8 @@ def MUSCL_Hancock_fluxes(self: Simulator, dt: float, prims=True):
         dMhs[idim] = dMh[crop(None,None,idim)]
         if self.WB:
             dMh = compute_slopes(self,self.dm.M_eq_fv,idim,gradient=True)
-            dMhs[idim+self.ndim] = dMh[crop(None,None,idim)]
+            #Not sure about this
+            dMhs[idim] += dMh[crop(None,None,idim)]
                         
     compute_prediction(self,self.dm.M_fv[crop(1,-1,0)],dMhs)
     if self.WB:
@@ -130,8 +131,16 @@ def MUSCL_Hancock_fluxes(self: Simulator, dt: float, prims=True):
         S = compute_slopes(self,self.dm.M_fv,idim) 
         self.MR_faces[dim][...] = interpolate_R(self,self.dm.M_fv,S,idim)
         self.ML_faces[dim][...] = interpolate_L(self,self.dm.M_fv,S,idim)
+        if self.WB:
+            #Move to solution at interfaces
+            M_eq_faces = self.dm.__getattribute__(f"M_eq_faces_{dim}")
+            self.MR_faces[dim][...] += M_eq_faces
+            self.ML_faces[dim][...] += M_eq_faces
         self.F_faces_FB[dim] = self.riemann_solver_fv(self.ML_faces[dim], self.MR_faces[dim], vels, self._p_, self.gamma, self.min_c2, prims)
-
+        if self.WB:
+            #We compute the perturbation over the flux for conservative variables
+            self.F_faces_FB[dim] -= self.dm.__getattribute__(f"F_eq_faces_{dim}")
+    
 def compute_viscosity(self: Simulator):
     ngh=self.Nghc
     dW={}
