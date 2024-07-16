@@ -170,9 +170,6 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         #   U_ader_sp: (nader,nvar,Nz,Ny,Nx,pz,py,px)
 
         # 1) Initialize u_ader_sp to u_sp, at all ADER time substeps.
-        if self.WB:
-            #U -> U'
-            self.dm.U_sp -= self.dm.U_eq_sp
         self.dm.U_ader_sp[...] = self.dm.U_sp[:,na, ...]
 
         # 2) ADER scheme (Picard iteration).
@@ -215,7 +212,7 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         self.dm.U_sp -= dUdt
 
         # Compute primitive variables at solution points from updated solution    
-        self.dm.W_sp =  self.compute_primitives(self.dm.U_sp)
+        #self.dm.W_sp =  self.compute_primitives(self.dm.U_sp)
 
     def solve_faces(self, M, ader_iter, prims=False)->None:
         na=np.newaxis
@@ -234,7 +231,7 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
             bc.apply_interfaces(self,F,self.F_ader_fp[dim],dim)
             if self.WB:
                 #F->F'
-                self.F_ader_fp[dim]+=self.dm.__getattribute__(f"F_eq_fp_{dim}")[:,na]
+                self.F_ader_fp[dim]-=self.dm.__getattribute__(f"F_eq_fp_{dim}")[:,na]
         
         if self.viscosity:
             self.add_viscosity()
@@ -310,16 +307,8 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         self.dm.U_cv = self.transpose_to_sd(self.dm.U_cv)
         self.dm.W_cv = self.transpose_to_sd(self.dm.W_cv)
         self.dm.U_sp[...] = self.compute_sp_from_cv(self.dm.U_cv)
-        self.dm.W_sp[...] = self.compute_primitives(self.dm.U_sp)
         if self.WB:
             self.dm.U_eq_cv = self.transpose_to_sd(self.dm.U_eq_cv)
-            #U_cv and W_cv are perturbations up to this point
-            self.dm.U_sp[...] += self.dm.U_eq_sp
-            self.dm.W_sp[...] = self.compute_primitives(self.dm.U_sp)
-            #U_sp and W_sp are now solutions
-            #We switch U_cv and W_cv to be solutions
-            self.dm.U_cv += self.dm.U_eq_cv
-            self.dm.W_cv = self.compute_primitives(self.dm.W_cv)
 
     def store_high_order_fluxes(self,i_ader):
         ndim=self.ndim
@@ -360,23 +349,34 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
                 self.fv_apply_fluxes(dt)
             #Update solution
             self.dm.U_cv[...] = self.dm.U_new
-            if self.WB:
-                self.dm.W_cv[...] = self.compute_primitives(self.dm.U_cv+self.dm.U_eq_cv)
-                self.dm.W_cv[...] -= self.compute_primitives(self.dm.U_eq_cv)
-            else:
-                self.dm.W_cv[...] = self.compute_primitives(self.dm.U_cv)
+            self.dm.W_cv[...] = self.compute_primitives_cv(self.dm.U_cv)
         self.switch_to_high_order()
+
+    def compute_primitives_cv(self,U)->np.ndarray:
+        if self.WB:
+            return (self.compute_primitives(U+self.dm.U_eq_cv)
+                    -self.compute_primitives(self.dm.U_eq_cv))
+        else:
+            return  self.compute_primitives(U)
 
     ####################
     ## Update functions
     ####################
     def perform_update(self) -> bool:
         self.n_step += 1
+        if self.WB:
+            #U -> U'
+            self.dm.U_sp -= self.dm.U_eq_sp
         self.ader_predictor()
         if self.update=="SD":
             self.ader_update()
         else:
             self.fv_update()
+        if self.WB:
+            #U' -> U
+            self.dm.U_sp[...] += self.dm.U_eq_sp
+            self.dm.W_sp[...] = self.compute_primitives(self.dm.U_sp)
+            self.dm.W_cv[...] = self.compute_cv_from_sp(self.dm.W_sp)
         self.time += self.dm.dt
         return True
 

@@ -7,15 +7,10 @@ def detect_troubles(self: Simulator):
     ngh=self.Nghc
     crop = lambda start,end,idim : crop_fv(start,end,idim,self.ndim,ngh)
     self.dm.troubles[...] = 0
-    W_old = self.compute_primitives(self.dm.U_cv)
+    W_old = self.compute_primitives_cv(self.dm.U_cv)
     # W_old -> s.dm.M_fv
     self.fill_active_region(W_old)
-    if self.WB:
-        self.dm.U_new += self.dm.U_eq_cv
-    W_new = self.compute_primitives(self.dm.U_new)
-    if self.WB:
-        W_eq = self.compute_primitives(self.dm.U_eq_cv)
-        W_new -= W_eq
+    W_new = self.compute_primitives_cv(self.dm.U_new)    
     ##############################################
     # NAD Check for numerically adimissible values
     ##############################################
@@ -63,7 +58,7 @@ def detect_troubles(self: Simulator):
     ###########################
     if self.PAD:
         if self.WB:
-            W_new += W_eq
+            W_new += self.compute_primitives(self.dm.U_eq_cv)
         # For the density
         self.dm.troubles = np.where(
             W_new[self._d_, ...] >= self.min_rho, self.dm.troubles, 1
