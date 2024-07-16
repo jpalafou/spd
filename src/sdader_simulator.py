@@ -360,7 +360,11 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
                 self.fv_apply_fluxes(dt)
             #Update solution
             self.dm.U_cv[...] = self.dm.U_new
-            self.dm.W_cv[...] = self.compute_primitives(self.dm.U_cv)
+            if self.WB:
+                self.dm.W_cv[...] = self.compute_primitives(self.dm.U_cv+self.dm.U_eq_cv)
+                self.dm.W_cv[...] -= self.compute_primitives(self.dm.U_eq_cv)
+            else:
+                self.dm.W_cv[...] = self.compute_primitives(self.dm.U_cv)
         self.switch_to_high_order()
 
     ####################
@@ -466,4 +470,7 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
                 self.dm.__setattr__(f"F_eq_faces_{dim}",F)
         ngh = self.Nghc
         if self.update=="FV":
-            self.dm.M_eq_fv = self.transpose_to_fv(W_gh)[crop(n-ngh,-(n-ngh),0,n-ngh)]
+            if n>ngh:
+                self.dm.M_eq_fv = self.transpose_to_fv(W_gh)[crop(n-ngh,-(n-ngh),0,n-ngh)]
+            else:
+                self.dm.M_eq_fv = self.transpose_to_fv(W_gh)

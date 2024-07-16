@@ -113,7 +113,8 @@ def MUSCL_Hancock_fluxes(self: Simulator, dt: float, prims=True):
         if self.WB:
             dMh = compute_slopes(self,self.dm.M_eq_fv,idim,gradient=True)
             #Not sure about this
-            dMhs[idim] += dMh[crop(None,None,idim)]
+            vars = [self._d_,self._p_]
+            dMhs[idim][vars] += dMh[vars][crop(None,None,idim)]
                         
     compute_prediction(self,self.dm.M_fv[crop(1,-1,0)],dMhs)
     if self.WB:
@@ -161,8 +162,6 @@ def compute_viscosity(self: Simulator):
     for dim in self.dims2:
         shift = self.dims2[dim]
         vels = np.roll(self.vels,-shift)
-        h_cv = self.h_cv[dim]
-        h_fp = self.h_fp[dim]
         for idim in self.dims:
             self.fill_active_region(dW[idim])
             if self.BC[dim] == "periodic":
