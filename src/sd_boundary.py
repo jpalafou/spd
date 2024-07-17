@@ -49,6 +49,10 @@ def store_BC(self: SD_Simulator,
             BC_array[side,self.vels[idim]] *= -1
         elif BC[side] == "gradfree":
             BC_array[side] = M[indices2(-side,self.ndim,idim)]
+        elif BC[side] == "ic":
+            next
+        elif BC[side] == "eq":
+            next
         elif BC[side] == "pressure":
             #Overwrite solution with ICs
             M[indices2(-side,self.ndim,idim)] = BC_array[side]

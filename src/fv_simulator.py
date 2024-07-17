@@ -126,8 +126,12 @@ class FV_Simulator(Simulator):
                 self.BC_fv[dim][side][self.vels[idim]] *= -1
             elif BC[side] == "gradfree":
                 self.BC_fv[dim][side] = M[cuts(1-side)]
-            elif self.BC[dim] == "pressure":
+            elif BC[side] == "ic":
                 next
+            elif BC[side] == "pressure":
+                next
+            elif BC[side] == "eq":
+                self.BC_fv[dim][side][...] = 0
             else:
                 raise("Undetermined boundary type")
                          

@@ -287,17 +287,13 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         return np.ndarray(shape)
 
     def switch_to_finite_volume(self):
-        #Change to Finite Volume scheme
+        #Compute control volume averages
         self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp)
-        self.dm.W_cv[...] = self.compute_primitives(self.dm.U_cv)
-        if self.WB:
-            #U_cv are perturbations up to this point
-            self.dm.W_cv[...]  = self.compute_primitives(self.dm.U_cv + self.dm.U_eq_cv)
-            self.dm.W_cv[...] -= self.compute_primitives(self.dm.U_eq_cv)
-            self.dm.U_eq_cv = self.transpose_to_fv(self.dm.U_eq_cv)
-
+        #Change to Finite Volume scheme
         self.dm.U_cv = self.transpose_to_fv(self.dm.U_cv)
         self.dm.W_cv = self.transpose_to_fv(self.dm.W_cv)
+        if self.WB:
+            self.dm.U_eq_cv = self.transpose_to_fv(self.dm.U_eq_cv)
         
         for dim in self.dims2:
             self.F_ader_fp[dim][...] = self.integrate_faces(self.F_ader_fp[dim],dim)
@@ -306,9 +302,11 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         #Change back to High-Order scheme
         self.dm.U_cv = self.transpose_to_sd(self.dm.U_cv)
         self.dm.W_cv = self.transpose_to_sd(self.dm.W_cv)
-        self.dm.U_sp[...] = self.compute_sp_from_cv(self.dm.U_cv)
         if self.WB:
             self.dm.U_eq_cv = self.transpose_to_sd(self.dm.U_eq_cv)
+        #Compute solution at solution points
+        self.dm.U_sp[...] = self.compute_sp_from_cv(self.dm.U_cv)
+        
 
     def store_high_order_fluxes(self,i_ader):
         ndim=self.ndim
@@ -335,8 +333,8 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
 
     def fv_update(self):
         self.switch_to_finite_volume()
-        self.dm.U_new[...] = self.dm.U_cv
         for i_ader in range(self.nader):
+            self.dm.W_cv[...] = self.compute_primitives_cv(self.dm.U_cv)
             dt = self.dm.dt*self.dm.w_tp[i_ader]
             self.store_high_order_fluxes(i_ader)
             #Compute candidate solution
@@ -349,7 +347,6 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
                 self.fv_apply_fluxes(dt)
             #Update solution
             self.dm.U_cv[...] = self.dm.U_new
-            self.dm.W_cv[...] = self.compute_primitives_cv(self.dm.U_cv)
         self.switch_to_high_order()
 
     def compute_primitives_cv(self,U)->np.ndarray:
@@ -375,8 +372,8 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         if self.WB:
             #U' -> U
             self.dm.U_sp[...] += self.dm.U_eq_sp
-        self.dm.W_sp[...] = self.compute_primitives(self.dm.U_sp)
-        self.dm.W_cv[...] = self.compute_cv_from_sp(self.dm.W_sp)
+            self.dm.U_cv[...] += self.dm.U_eq_cv
+        self.dm.W_cv[...] = self.compute_primitives(self.dm.U_cv)
         self.time += self.dm.dt
         return True
 
@@ -390,7 +387,7 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         self.execution_time += timer() 
         self.create_dicts()
         self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp)
-        self.dm.W_cv[...] = self.compute_cv_from_sp(self.dm.W_sp)
+        self.dm.W_cv[...] = self.compute_primitives(self.dm.U_cv)
 
     def perform_iterations(self, n_step: int) -> None:
         self.init_sim()

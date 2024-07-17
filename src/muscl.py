@@ -102,30 +102,28 @@ def MUSCL_Hancock_fluxes(self: Simulator, dt: float, prims=True):
     self.fill_active_region(self.dm.W_cv)
     for dim in self.dims2:
         self.fv_Boundaries(self.dm.M_fv,dim)
-    if self.WB:
-        #We move to the solution
-        self.dm.M_fv += self.dm.M_eq_fv
 
-    for dim in self.dims2:
-        idim=self.dims2[dim] 
-        dMh = compute_slopes(self,self.dm.M_fv,idim,gradient=True)
-        dMhs[idim] = dMh[crop(None,None,idim)]
-        if self.WB:
-            dMh = compute_slopes(self,self.dm.M_eq_fv,idim,gradient=True)
-            #Not sure about this
-            vars = [self._d_,self._p_]
-            dMhs[idim][vars] += dMh[vars][crop(None,None,idim)]
-                        
-    compute_prediction(self,self.dm.M_fv[crop(1,-1,0)],dMhs)
-    if self.WB:
-        if self.potential:
-            for vel in self.vels:
-                dVt = ((self.dm.M_fv[0]-self.dm.M_eq_fv[0])/self.dm.M_fv[0]*self.dm.grad_phi_fv[vel-1])
-                self.dm.dMt[vel] += dVt[crop(1,-1,0)]
-        #We move back to the perturbation
-        self.dm.M_fv -= self.dm.M_eq_fv
-
-    self.dm.M_fv[crop(1,-1,0)] += 0.5*self.dm.dtM*dt
+    #for dim in self.dims2:
+    #    idim=self.dims2[dim] 
+    #    dMh = compute_slopes(self,self.dm.M_fv,idim,gradient=True)
+    #    dMhs[idim] = dMh[crop(None,None,idim)]
+    #    if self.WB:
+    #        dMh = compute_slopes(self,self.dm.M_eq_fv,idim,gradient=True)
+    #        #Not sure about this
+    #        vars = [self._d_,self._p_]
+    #        dMhs[idim][vars] += dMh[vars][crop(None,None,idim)]
+    #if self.WB:
+    #    self.dm.M_fv += self.dm.M_eq_fv                    
+    #compute_prediction(self,self.dm.M_fv[crop(1,-1,0)],dMhs)
+    #if self.WB:
+    #    #if self.potential:
+    #    #    drho = ((self.dm.M_fv[0]-self.dm.M_eq_fv[0])/self.dm.M_fv[0])
+    #    #    for vel in self.vels:
+    #    #        self.dm.dtM[vel] += drho[crop(1,-1,0)]*self.dm.grad_phi_fv[vel-1]
+    #    #We move back to the perturbation
+    #    self.dm.M_fv -= self.dm.M_eq_fv
+    #self.dm.M_fv[crop(1,-1,0)] += 0.5*self.dm.dtM*dt
+    
     for dim in self.dims2:
         idim=self.dims2[dim]
         vels = np.roll(self.vels,-idim)
