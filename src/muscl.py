@@ -61,12 +61,26 @@ def interpolate_L(self: Simulator, M, S, idim):
     ngh=self.Nghc
     crop = lambda start,end,idim : crop_fv(start,end,idim,self.ndim,ngh)
     return M[crop(1,-ngh,idim)] + S[crop(None,-1,idim)]        
+
+def solve_riemann_problem(self: Simulator,dim: str, prims: bool):
+    idim=self.dims2[dim]
+    vels = np.roll(self.vels,-idim)
+    if self.WB:
+        #Move to solution at interfaces
+        M_eq_faces = self.dm.__getattribute__(f"M_eq_faces_{dim}")
+        self.MR_faces[dim][...] += M_eq_faces
+        self.ML_faces[dim][...] += M_eq_faces
+    self.F_faces_FB[dim] = self.riemann_solver_fv(self.ML_faces[dim], self.MR_faces[dim], vels, self._p_, self.gamma, self.min_c2, prims)
+    if self.WB:
+        #We compute the perturbation over the flux for conservative variables
+        self.F_faces_FB[dim] -= self.dm.__getattribute__(f"F_eq_faces_{dim}")
+    
                 
 def MUSCL_fluxes(self: Simulator, dt: float, prims=True):
     ngh = self.Nghc
     self.dm.M_fv[...]  = 0
     #Copy W_cv to active region of M_fv
-    self.fill_active_region(self.compute_primitives(self.dm.U_cv))
+    self.fill_active_region(self.dm.W_cv)
     for dim in self.dims2:
         self.fv_Boundaries(self.dm.M_fv,dim)
     for dim in self.dims2:
@@ -77,8 +91,8 @@ def MUSCL_fluxes(self: Simulator, dt: float, prims=True):
         
         self.MR_faces[dim][...] = interpolate_R(self,self.dm.M_fv,S,shift)
         self.ML_faces[dim][...] = interpolate_L(self,self.dm.M_fv,S,shift)
-        self.F_faces_FB[dim] = self.riemann_solver_fv(self.ML_faces[dim], self.MR_faces[dim], vels, self._p_, self.gamma, self.min_c2, prims)
-        
+        solve_riemann_problem(self,dim,prims)
+    
 def compute_prediction(self: Simulator, W, dWs):
     gamma=self.gamma
     _d_ = self._d_
@@ -90,12 +104,17 @@ def compute_prediction(self: Simulator, W, dWs):
         self.dm.dtM[_d_] -= (W[vel]*dW[_d_] +       W[_d_]*dW[vel])
         self.dm.dtM[_p_] -= (W[vel]*dW[_p_] + gamma*W[_p_]*dW[vel])
         self.dm.dtM[vel] -= (W[vel]*dW[vel]+ dW[_p_]/W[_d_])
+        if self.WB:
+            dW = dWs[idim+self.ndim]
+            self.dm.dtM[_d_] -= (W[vel]*dW[_d_]) 
+            self.dm.dtM[_p_] -= (W[vel]*dW[_p_])
         for vel2 in self.vels[1:]:
             self.dm.dtM[vel2] -= W[vel]*dW[vel2]   
 
 def MUSCL_Hancock_fluxes(self: Simulator, dt: float, prims=True):
     ngh = self.Nghc
     dMhs={}
+    S={}
     self.dm.M_fv[...]  = 0
     crop = lambda start,end,idim : crop_fv(start,end,idim,self.ndim,1)
     #Copy W_cv to active region of M_fv
@@ -103,42 +122,31 @@ def MUSCL_Hancock_fluxes(self: Simulator, dt: float, prims=True):
     for dim in self.dims2:
         self.fv_Boundaries(self.dm.M_fv,dim)
 
-    #for dim in self.dims2:
-    #    idim=self.dims2[dim] 
-    #    dMh = compute_slopes(self,self.dm.M_fv,idim,gradient=True)
-    #    dMhs[idim] = dMh[crop(None,None,idim)]
-    #    if self.WB:
-    #        dMh = compute_slopes(self,self.dm.M_eq_fv,idim,gradient=True)
-    #        #Not sure about this
-    #        vars = [self._d_,self._p_]
-    #        dMhs[idim][vars] += dMh[vars][crop(None,None,idim)]
-    #if self.WB:
-    #    self.dm.M_fv += self.dm.M_eq_fv                    
-    #compute_prediction(self,self.dm.M_fv[crop(1,-1,0)],dMhs)
-    #if self.WB:
-    #    #if self.potential:
-    #    #    drho = ((self.dm.M_fv[0]-self.dm.M_eq_fv[0])/self.dm.M_fv[0])
-    #    #    for vel in self.vels:
-    #    #        self.dm.dtM[vel] += drho[crop(1,-1,0)]*self.dm.grad_phi_fv[vel-1]
-    #    #We move back to the perturbation
-    #    self.dm.M_fv -= self.dm.M_eq_fv
-    #self.dm.M_fv[crop(1,-1,0)] += 0.5*self.dm.dtM*dt
+    for dim in self.dims2:
+        idim=self.dims2[dim]
+        dMh = compute_slopes(self,self.dm.M_fv,idim,gradient=True)
+        S[idim] = 0.5*dMh*self.h_fp[dim][cut(1,-1,idim)]
+        dMhs[idim] = dMh[crop(None,None,idim)]
+        if self.WB:
+            dMhs[idim+self.ndim] = compute_slopes(self,self.dm.M_eq_fv,idim,gradient=True)[crop(None,None,idim)]
+    if self.WB:
+        self.dm.M_fv += self.dm.M_eq_fv                    
+    compute_prediction(self,self.dm.M_fv[crop(1,-1,0)],dMhs)
+    if self.WB:
+        if self.potential:
+            drho = ((self.dm.M_fv[0]-self.dm.M_eq_fv[0])/self.dm.M_fv[0])[crop(1,-1,0)]
+            for vel in self.vels:
+                self.dm.dtM[vel][crop(1,-1,0)] += drho[crop(1,-1,0)]*self.dm.grad_phi_fv[vel-1]
+        #We move back to the perturbation
+        self.dm.M_fv -= self.dm.M_eq_fv
+    self.dm.M_fv[crop(1,-1,0)] += 0.5*self.dm.dtM*dt
     
     for dim in self.dims2:
         idim=self.dims2[dim]
         vels = np.roll(self.vels,-idim)
-        S = compute_slopes(self,self.dm.M_fv,idim) 
-        self.MR_faces[dim][...] = interpolate_R(self,self.dm.M_fv,S,idim)
-        self.ML_faces[dim][...] = interpolate_L(self,self.dm.M_fv,S,idim)
-        if self.WB:
-            #Move to solution at interfaces
-            M_eq_faces = self.dm.__getattribute__(f"M_eq_faces_{dim}")
-            self.MR_faces[dim][...] += M_eq_faces
-            self.ML_faces[dim][...] += M_eq_faces
-        self.F_faces_FB[dim] = self.riemann_solver_fv(self.ML_faces[dim], self.MR_faces[dim], vels, self._p_, self.gamma, self.min_c2, prims)
-        if self.WB:
-            #We compute the perturbation over the flux for conservative variables
-            self.F_faces_FB[dim] -= self.dm.__getattribute__(f"F_eq_faces_{dim}")
+        self.MR_faces[dim][...] = interpolate_R(self,self.dm.M_fv,S[idim],idim)
+        self.ML_faces[dim][...] = interpolate_L(self,self.dm.M_fv,S[idim],idim)
+        solve_riemann_problem(self,dim,prims)
     
 def compute_viscosity(self: Simulator):
     ngh=self.Nghc
