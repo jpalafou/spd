@@ -101,12 +101,10 @@ def Comms_fp(self: SD_Simulator,
     side = 1-rank_dim%2
     send_recv(self,neighbour,Buffers[side],dim,side)
 
-def send_recv(self: SD_Simulator, neighbour, Buffer_send, dim: str, side):
-    rank = self.comms.rank
+def send_recv(self: SD_Simulator, neighbour, Buffer, dim: str, side):
+    comms = self.comms
+    rank = comms.rank
     if neighbour != rank:
-        #print(f"rank{rank} sending to {neighbour} at dimension {dim} and side {side}")
-        Buffer_recv = Buffer_send.copy()
-        #self.comms.send_recv(neighbour,Buffer_send,Buffer_recv)
-        self.comms.comm.Sendrecv(Buffer_send,neighbour,sendtag=side,recvbuf=Buffer_recv,source=neighbour,recvtag=1-side)
+        comms.send_recv_replace(Buffer,neighbour,side)
         BC = self.BC_fp[dim][side]
-        self.BC_fp[dim][side][...] = self.dm.xp.asarray(Buffer_recv).reshape(BC.shape)
+        self.BC_fp[dim][side][...] = self.dm.xp.asarray(Buffer).reshape(BC.shape)

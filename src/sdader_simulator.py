@@ -394,7 +394,7 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
     def perform_time_evolution(self, t_end: float, nsteps=0) -> None:
         self.init_sim()
         while(self.time < t_end):
-            if not self.n_step % 100:
+            if not self.n_step % 100 and self.rank==0 and self.verbose:
                 print(f"Time step #{self.n_step} (t = {self.time})",end="\r")
             self.compute_dt()   
             if(self.time + self.dm.dt >= t_end):

@@ -48,6 +48,9 @@ class CommHelper():
             self.comm.Recv(recv_buffer, source=neighbour)
             self.comm.Send(send_buffer, dest=neighbour)
     
+    def send_recv_replace(self,buffer,neighbour,side):
+        self.comm.Sendrecv_replace(buffer,neighbour,sendtag=side,source=neighbour,recvtag=1-side)
+        
     def reduce_min(self, M):
         if self.size>1:
             return self.comm.allreduce(M,op=MPI.MIN)

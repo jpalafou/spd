@@ -34,6 +34,7 @@ class Simulator:
         BC: Tuple = (("periodic","periodic"),
                      ("periodic","periodic"),
                      ("periodic","periodic")),
+        verbose = True,
     ):
         self.init_fct = init_fct
         self.eq_fct = eq_fct
@@ -63,6 +64,7 @@ class Simulator:
         self.viscosity = viscosity
         self.potential = potential
         self.WB = WB
+        self.verbose = verbose
         self.comms = CommHelper(self.ndim)
 
         assert len(BC) >= ndim
@@ -129,7 +131,8 @@ class Simulator:
             start += x*self.len[dim]
             end = start+self.len[dim]
             self.lim[dim] = (start,end)
-            print(self.comms.rank,dim,self.N[dim],self.len[dim],self.lim[dim])
+            #print(self.comms.rank,dim,self.N[dim],self.len[dim],self.lim[dim])
+        self.rank = self.comms.rank
 
     def shape(self,idim):
         return (None,)*(self.ndim-idim)+(slice(None),)+(None,)*(idim)
