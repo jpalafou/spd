@@ -218,4 +218,7 @@ class SD_Simulator(Simulator):
         dt = h/c_max 
         if self.viscosity and self.nu>0:
             dt = min(dt,h**2/self.nu*.25)
+        
+        dt = self.comms.reduce_min(dt)
         self.dm.dt = self.cfl_coeff*dt
+

@@ -47,4 +47,9 @@ class CommHelper():
         else:
             self.comm.Recv(recv_buffer, source=neighbour)
             self.comm.Send(send_buffer, dest=neighbour)
-        
+    
+    def reduce_min(self, M):
+        if self.size>1:
+            return self.comm.allreduce(M,op=MPI.MIN)
+        else:
+            return M
