@@ -102,6 +102,17 @@ class FV_Simulator(Simulator):
         self.fv_apply_fluxes(self.dm.dt)
         self.dm.U_cv[...] = self.dm.U_new
 
+    def init_fv_Boundaries(self, M) -> None:
+        ngh=self.Nghc
+        n = self.p+1
+        if n>2:
+            M = M[crop_fv(n-ngh,-(n-ngh),0,self.ndim,n-ngh)]
+        for dim in self.dims2:
+            idim = self.dims2[dim]
+            BC_fv = self.dm.__getattribute__(f"BC_fv_{dim}")
+            BC_fv[0][...] = M[cut(None, ngh,idim)]
+            BC_fv[1][...] = M[cut(-ngh,None,idim)]
+
     def fv_store_BC(self,
              M: np.ndarray,
              dim: str) -> None:
@@ -118,10 +129,10 @@ class FV_Simulator(Simulator):
             if  BC[side] == "periodic":
                 self.BC_fv[dim][side] = M[cuts[side]]
             elif BC[side] == "reflective":
-                self.BC_fv[dim][side] = M[cuts(1-side)]
+                self.BC_fv[dim][side] = M[cuts[1-side]]
                 self.BC_fv[dim][side][self.vels[idim]] *= -1
             elif BC[side] == "gradfree":
-                self.BC_fv[dim][side] = M[cuts(1-side)]
+                self.BC_fv[dim][side] = M[cuts[1-side]]
             elif BC[side] == "ic":
                 next
             elif BC[side] == "pressure":
@@ -145,17 +156,38 @@ class FV_Simulator(Simulator):
                     M: np.ndarray,
                     dim: str):
         self.fv_store_BC(M,dim)
-        #Comms here
+        self.Comms_fv(M,dim)
         self.fv_apply_BC(dim)
-
-    def init_fv_Boundaries(self, M) -> None:
+    
+    def Comms_fv(self,
+             M: np.ndarray,
+             dim: str):
+        comms = self.comms
+        rank = comms.rank
+        rank_dim = comms.__getattribute__(dim)    
+        idim = self.dims2[dim]
         ngh=self.Nghc
-        n = self.p+1
-        if n>2:
-            M = M[crop_fv(n-ngh,-(n-ngh),0,self.ndim,n-ngh)]
-        for dim in self.dims2:
-            idim = self.dims2[dim]
-            BC_fv = self.dm.__getattribute__(f"BC_fv_{dim}")
-            BC_fv[0][...] = M[cut(None, ngh,idim)]
-            BC_fv[1][...] = M[cut(-ngh,None,idim)]
+        cuts=(cut(-2*ngh,  -ngh,idim),
+              cut(   ngh, 2*ngh,idim))
+        Buffers={}
+        for side in [0,1]:
+            Buffer = M[cuts[1-side]]
+            Buffer = self.dm.xp.asnumpy(Buffer).flatten()
+            Buffers[side] = Buffer
+        
+        neighbour = comms.left[idim] if rank%2 else comms.right[idim]
+        side = rank_dim%2
+        self.send_recv_fv(neighbour,Buffers[side],dim,side)
+
+        neighbour = comms.right[idim] if rank%2 else comms.left[idim]
+        side = 1-rank_dim%2
+        self.send_recv_fv(neighbour,Buffers[side],dim,side)
+
+    def send_recv_fv(self, neighbour, Buffer, dim, side):
+        comms = self.comms
+        rank = comms.rank
+        if neighbour != rank:
+            comms.send_recv_replace(Buffer,neighbour,side)
+            BC = self.BC_fv[dim][side]
+            self.BC_fv[dim][side][...] = self.dm.xp.asarray(Buffer).reshape(BC.shape)
       

@@ -117,13 +117,17 @@ class SD_Simulator(Simulator):
     def transpose_to_sd(self, M):
         #nvar,Nznz,Nyny,Nxnx
         #nvar,Nz,Ny,Nx,nz,ny,nx
+        shape=[]
+        for dim in self.dims2:
+            shape+=[self.n[dim],self.N[dim]]
+        shape=[M.shape[0]]+shape[::-1]
         if self.ndim==1:
-            return M.reshape(M.shape[0],self.Nx,self.nx)   
+            return M.reshape(shape)   
         elif self.ndim==2:
-            return np.transpose(M.reshape(M.shape[0],self.Ny,self.ny,self.Nx,self.nx)
+            return np.transpose(M.reshape(shape)
                                 ,(0, 1,3, 2,4))
         else:
-            return np.transpose(M.reshape(M.shape[0],self.Nz,self.nz,self.Ny,self.ny,self.Nx,self.nx),
+            return np.transpose(M.reshape(shape),
                                 (0, 1,3,5, 2,4,6))
     
     def array(self,px,py,pz,ngh=0,ader=False) -> np.ndarray:

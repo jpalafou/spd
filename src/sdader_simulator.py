@@ -383,6 +383,8 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         self.create_dicts()
         self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp)
         self.dm.W_cv[...] = self.compute_primitives(self.dm.U_cv)
+        if self.rank==0:
+            print(f"t={self.time}, steps taken {self.n_step}, time taken {self.execution_time}")
 
     def perform_iterations(self, n_step: int) -> None:
         self.init_sim()
