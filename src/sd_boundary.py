@@ -38,7 +38,6 @@ def store_BC(self: SD_Simulator,
     Stores the solution at flux points for the extremes of the domain
     These boundary arrays can then be communicated between domains
     """    
-    na=np.newaxis
     idim = self.dims2[dim]
     BC = self.BC[dim]
     for side in [0,1]:
@@ -74,5 +73,40 @@ def Boundaries_sd(self: SD_Simulator,
                   dim: str):
     store_BC(self,self.BC_fp[dim],M,dim)
     store_interfaces(self,M,dim)
-            #Here would go the BC comms between different domains
+    Comms_fp(self,M,dim)
     apply_BC(self,dim)
+
+def Comms_fp(self: SD_Simulator,
+             M: np.ndarray,
+             dim: str):
+    """
+    Stores the solution at flux points for the extremes of the domain
+    These boundary arrays can then be communicated between domains
+    """
+    comms = self.comms
+    rank = comms.rank
+    rank_dim = comms.__getattribute__(dim)    
+    idim = self.dims2[dim]
+    Buffers={}
+    for side in [0,1]:
+        Buffer = M[indices2(-side,self.ndim,idim)]
+        Buffer = self.dm.xp.asnumpy(Buffer).flatten()
+        Buffers[side] = Buffer
+
+    neighbour = comms.left[idim] if rank%2 else comms.right[idim]
+    side = rank_dim%2
+    send_recv(self,neighbour,Buffers[side],dim,side)
+
+    neighbour = comms.right[idim] if rank%2 else comms.left[idim]
+    side = 1-rank_dim%2
+    send_recv(self,neighbour,Buffers[side],dim,side)
+
+def send_recv(self: SD_Simulator, neighbour, Buffer_send, dim: str, side):
+    rank = self.comms.rank
+    if neighbour != rank:
+        #print(f"rank{rank} sending to {neighbour} at dimension {dim} and side {side}")
+        Buffer_recv = Buffer_send.copy()
+        #self.comms.send_recv(neighbour,Buffer_send,Buffer_recv)
+        self.comms.comm.Sendrecv(Buffer_send,neighbour,sendtag=side,recvbuf=Buffer_recv,source=neighbour,recvtag=1-side)
+        BC = self.BC_fp[dim][side]
+        self.BC_fp[dim][side][...] = self.dm.xp.asarray(Buffer_recv).reshape(BC.shape)

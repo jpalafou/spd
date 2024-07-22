@@ -6,11 +6,12 @@ except:
 import numpy as np
 
 class CommHelper():
-    def __init__(self,comm,ndim):
-        self.comm = comm
+    def __init__(self,ndim):
+        
         if MPI_AVAILABLE:
-            self.size = comm.Get_size()
-            self.rank = comm.Get_rank()
+            self.comm = MPI.COMM_WORLD
+            self.size = self.comm.Get_size()
+            self.rank = self.comm.Get_rank()
         else:
             self.size = 1
             self.rank = 0
@@ -39,10 +40,11 @@ class CommHelper():
             self.left[dim]  = np.roll(mesh,+1,axis=2-dim)[self.z,self.y,self.x]
             self.right[dim] = np.roll(mesh,-1,axis=2-dim)[self.z,self.y,self.x]
 
-    def send_recv(self, sender, receiver, send_buffer, recv_buffer):
+    def send_recv(self, neighbour, send_buffer, recv_buffer):
         if self.rank%2:
-            self.comm.Send(send_buffer, dest=receiver)
-            self.comm.Recv(recv_buffer, source=sender)
+            self.comm.Send(send_buffer, dest=neighbour)
+            self.comm.Recv(recv_buffer, source=neighbour)
         else:
-            self.comm.Recv(recv_buffer, source=sender)
-            self.comm.Send(send_buffer, dest=receiver)
+            self.comm.Recv(recv_buffer, source=neighbour)
+            self.comm.Send(send_buffer, dest=neighbour)
+        

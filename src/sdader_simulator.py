@@ -1,7 +1,7 @@
 from typing import Callable,Tuple,Union
 import sys
 import numpy as np
-from collections import defaultdict
+
 from sd_simulator import SD_Simulator
 from fv_simulator import FV_Simulator
 from data_management import CupyLocation
@@ -9,7 +9,6 @@ from polynomials import gauss_legendre_quadrature
 from polynomials import ader_matrix
 from polynomials import quadrature_mean
 import sd_boundary as bc
-import riemann_solver as rs
 from trouble_detection import detect_troubles
 from timeit import default_timer as timer
 from slicing import cut, indices, indices2, crop_fv
@@ -64,10 +63,10 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
     def compute_positions(self):
         na = np.newaxis
         ngh=self.Nghc
-        self.faces = defaultdict(list)
-        self.centers = defaultdict(list)
-        self.h_fp = defaultdict(list)
-        self.h_cv = defaultdict(list)
+        self.faces = {}
+        self.centers = {}
+        self.h_fp = {}
+        self.h_cv = {}
         for dim in self.dims2:
             idim = self.dims2[dim]
             #Solution points
@@ -269,22 +268,18 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
     ####################
     def array_FV(self,n,nvar,dim=None,ngh=0)->np.ndarray:
         shape = [nvar] 
-        if self.Z:
-            shape += [self.Nz*n+(dim=="z")+2*ngh]
-        if self.Y:
-            shape += [self.Ny*n+(dim=="y")+2*ngh]
-        shape += [self.Nx*n+(dim=="x")+2*ngh]
-        return np.ndarray(shape)
+        N=[]
+        for dim2 in self.dims2:
+            N.append(self.N[dim2]*n+(dim==dim2)+2*ngh)
+        return np.ndarray(shape+N[::-1])
     
     def array_FV_BC(self,dim="x")->np.ndarray:
         shape = [2,self.nvar]
         ngh=self.Nghc
-        if self.Z:
-            shape += [self.Nz*self.nz+2*ngh] if dim!="z" else [ngh]
-        if self.Y:
-            shape += [self.Ny*self.ny+2*ngh] if dim!="y" else [ngh]
-        shape += [self.Nx*self.nx+2*ngh] if dim!="x" else [ngh]
-        return np.ndarray(shape)
+        N=[]
+        for dim2 in self.dims2:
+            N.append(self.N[dim2]*self.n[dim2]+2*ngh if dim!=dim2 else ngh)
+        return np.ndarray(shape+N[::-1])
 
     def switch_to_finite_volume(self):
         #Compute control volume averages

@@ -1,11 +1,8 @@
-from typing import Callable,Tuple,Union
-import sys
+from typing import Callable,Tuple
 import numpy as np
-import cupy as cp
-from collections import defaultdict
 
-from data_management import CupyLocation
 from data_management import GPUDataManager
+from comms import CommHelper
 from initial_conditions_3d import sine_wave
 import hydro
 
@@ -66,6 +63,7 @@ class Simulator:
         self.viscosity = viscosity
         self.potential = potential
         self.WB = WB
+        self.comms = CommHelper(self.ndim)
 
         assert len(BC) >= ndim
         self.BC = {}
@@ -84,11 +82,11 @@ class Simulator:
         self.nghy = (0,Nghc) [self.Y]
         self.nghz = (0,Nghc) [self.Z]
         
-        self.lim = defaultdict(list)
-        self.len = defaultdict(list)
-        self.h = defaultdict(list)
-        self.N = defaultdict(list)
-        self.ngh = defaultdict(list)
+        self.lim = {}
+        self.len = {}
+        self.h = {}
+        self.N = {}
+        self.ngh = {}
         self.h_min = 1E10
         for dim in self.dims2:
             self.lim[dim] = self.__getattribute__(f"{dim}lim") 
@@ -121,6 +119,17 @@ class Simulator:
         assert nvar == 2 + self.ndim
         self.nvar = nvar
         self.vels=np.array([self._vx_,self._vy_,self._vz_])[:self.ndim]
+
+        for dim in self.dims2:
+            n=self.comms.__getattribute__(f"n{dim}")
+            x=self.comms.__getattribute__(f"{dim}")
+            self.N[dim] = int(self.N[dim]//n)
+            self.len[dim] = self.len[dim]/n
+            start,end = self.lim[dim]
+            start += x*self.len[dim]
+            end = start+self.len[dim]
+            self.lim[dim] = (start,end)
+            print(self.comms.rank,dim,self.N[dim],self.len[dim],self.lim[dim])
 
     def shape(self,idim):
         return (None,)*(self.ndim-idim)+(slice(None),)+(None,)*(idim)

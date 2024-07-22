@@ -27,22 +27,18 @@ class FV_Simulator(Simulator):
 
     def array_FV(self,nvar,dim=None,ngh=0)->np.ndarray:
         shape = [nvar] 
-        if self.Z:
-            shape += [self.Nz+(dim=="z")+2*ngh]
-        if self.Y:
-            shape += [self.Ny+(dim=="y")+2*ngh]
-        shape += [self.Nx+(dim=="x")+2*ngh]
-        return np.ndarray(shape)
+        N=[]
+        for dim2 in self.dims2:
+            N.append(self.N[dim2]+(dim==dim2)+2*ngh)
+        return np.ndarray(shape+N[::-1])
     
     def array_FV_BC(self,dim="x")->np.ndarray:
         shape = [2,self.nvar]
         ngh=self.Nghc
-        if self.Z:
-            shape += [self.Nz+2*ngh] if dim!="z" else [ngh]
-        if self.Y:
-            shape += [self.Ny+2*ngh] if dim!="y" else [ngh]
-        shape += [self.Nx+2*ngh] if dim!="x" else [ngh]
-        return np.ndarray(shape)
+        N=[]
+        for dim2 in self.dims2:
+            N.append(self.N[dim2]+2*ngh if dim!=dim2 else ngh)
+        return np.ndarray(shape+N[::-1])
     
     def fv_arrays(self)->None:
         self.dm.M_fv  = self.array_FV(self.p+1,self.nvar,ngh=self.Nghc)

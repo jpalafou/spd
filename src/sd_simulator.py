@@ -125,30 +125,15 @@ class SD_Simulator(Simulator):
         else:
             return np.transpose(M.reshape(M.shape[0],self.Nz,self.nz,self.Ny,self.ny,self.Nx,self.nx),
                                 (0, 1,3,5, 2,4,6))
-                                
-    def array1d(self,px,ngh=0,ader=False) -> np.ndarray:
-        shape = [self.nvar,self.nader] if ader else [self.nvar]
-        shape += [self.Nx+2*ngh,px]
-        return np.ndarray(shape)
-        
-    def array2d(self,px,py,ngh=0,ader=False)-> np.ndarray:
-        shape = [self.nvar,self.nader] if ader else [self.nvar]
-        shape += [self.Ny+2*ngh,self.Nx+2*ngh,py,px]
-        return np.ndarray(shape)
-
-    def array3d(self,px,py,pz,ngh=0,ader=False)-> np.ndarray:
-        shape = [self.nvar,self.nader] if ader else [self.nvar]
-        shape += [self.Nz+2*ngh,self.Ny+2*ngh,self.Nx+2*ngh,
-                  pz,py,px]
-        return np.ndarray(shape)
     
-    def array(self,px,py,pz,**kwargs) -> np.ndarray:
-        if self.ndim==1:
-            return self.array1d(px,**kwargs)
-        if self.ndim==2:
-            return self.array2d(px,py,**kwargs)
-        if self.ndim==3:
-            return self.array3d(px,py,pz,**kwargs)
+    def array(self,px,py,pz,ngh=0,ader=False) -> np.ndarray:
+        shape = [self.nvar,self.nader] if ader else [self.nvar]
+        N = []
+        for dim in self.dims2:
+            N.append(self.N[dim]+2*ngh)
+        N = N[::-1] 
+        p = [px,py,pz][:self.ndim][::-1]
+        return np.ndarray(shape+N+p)
         
     def array_sp(self,**kwargs):
         p=self.p
@@ -168,14 +153,11 @@ class SD_Simulator(Simulator):
     
     def array_RS(self,dim="x",ader=False)->np.ndarray:
         shape = [self.nvar,self.nader] if ader else [self.nvar]
-        if self.Z:
-            shape += [self.Nz+(dim=="z")]
-        if self.Y:
-            shape += [self.Ny+(dim=="y")]
-        shape += [self.Nx+(dim=="x")]
-        if self.Z:    
-            shape += [self.p+1]
-        if self.Y:
+        N = []
+        for dim2 in self.dims2:
+            N.append(self.N[dim2]+(dim2==dim))
+        shape += N[::-1] 
+        for i in range(1,self.ndim):
             shape += [self.p+1]
         return np.ndarray(shape)
     
@@ -183,13 +165,12 @@ class SD_Simulator(Simulator):
         shape = [2,self.nvar,self.nader] if ader else [2,self.nvar]
         if self.Z:
             if dim=="x" or dim=="y":
-                shape += [self.Nz]
+                shape += [self.N["z"]]
         if self.Y:
             if dim=="x" or dim=="z":
-                shape += [self.Ny]
+                shape += [self.N["y"]]
         if dim=="y" or dim=="z":
-            shape += [self.Nx]
-
+            shape += [self.N["x"]]
         if self.Z:    
             shape += [self.p+1]
         if self.Y:
