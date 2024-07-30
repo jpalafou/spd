@@ -13,15 +13,12 @@ class Simulator:
         eq_fct: Callable = sine_wave,
         p: int =  1, 
         m: int = -1,
-        Nx: int = 32,
-        Ny: int = 32,
-        Nz: int = 32,
+        N: Tuple = (32,32),
         Nghe: int = 1,
         Nghc: int = 2,
         xlim: Tuple = (0,1),
         ylim: Tuple = (0,1),
         zlim: Tuple = (0,1),
-        ndim: int = 3,
         gamma: float = 1.4,
         beta: float = 2./3,
         nu: float = 1e-4,
@@ -43,11 +40,23 @@ class Simulator:
             m=p
         self.p = p #Space order
         self.m = m #Time  order
-        self.Nx = Nx
+        ndim = len(N)
+        self.ndim = ndim
+        assert len(BC) >= ndim
+        self.BC = {}
+        self.dims = {}
+        self.dims2 = {}
+        
+        dims = ["x","y","z"]
+        for idim in range(ndim):
+            dim = dims[idim]
+            self.dims[idim] = dim
+            self.dims2[dim] = idim
+            self.BC[dim] = BC[idim]
+            self.__setattr__(f"N{dim}",N[idim])
+            
         self.Y = ndim>1
         self.Z = ndim>2
-        self.Ny = ((1,Ny) [self.Y]) 
-        self.Nz = ((1,Nz) [self.Z])
         self.xlim = xlim
         self.ylim = ylim
         self.zlim = zlim
@@ -66,18 +75,7 @@ class Simulator:
         self.WB = WB
         self.verbose = verbose
         self.comms = CommHelper(self.ndim)
-
-        assert len(BC) >= ndim
-        self.BC = {}
-        self.dims = {}
-        self.dims2 = {}
-        
-        dims = ["x","y","z"]
-        for dim in range(ndim):
-            self.dims[dim] = dims[dim]
-            self.dims2[dims[dim]] = dim
-            self.BC[dims[dim]] = BC[dim]
-                
+       
         self.dm = GPUDataManager(use_cupy)
 
         self.nghx = Nghc
