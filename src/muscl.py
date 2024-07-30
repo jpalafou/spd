@@ -151,23 +151,18 @@ def MUSCL_Hancock_fluxes(self: Simulator, dt: float, prims=True):
 def compute_viscosity(self: Simulator):
     ngh=self.Nghc
     dW={}
-    #for dim in self.dims2:
-    #    idim = self.dims2[dim]
-    #    ML =  self.dm.M_fv[cut(None,-2,idim)]
-    #    MR =  self.dm.M_fv[cut( 2,None,idim)]
-    #    centers =  self.centers[dim]
-    #    h = centers[cut( 2,None,idim)]-centers[cut(None,-2,idim)]
-    #    dW[idim] = (MR-ML)/h
     for dim in self.dims2:
         idim = self.dims2[dim]
         #Make a choice of values (here left)
         M = self.ML_faces[dim]
         h = self.h_fp[dim][cut(ngh,-ngh,idim)]
+        #Compute gradient in dim at cell centers
         dW[idim] = (M[cut( 1,None,idim)]-M[cut(None,-1,idim)])/h
     dW_f = {}
     for dim in self.dims2:
         shift = self.dims2[dim]
         vels = np.roll(self.vels,-shift)
+        #Interpolate gradients(all) to faces at dim
         for idim in self.dims:
             self.fill_active_region(dW[idim])
             if self.BC[dim] == "periodic":
