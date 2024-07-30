@@ -99,26 +99,17 @@ class Simulator:
             self.h_min = min(self.h_min,self.h[dim])
         self.n_step = 0
         
-        nvar=0
-        self._d_  = nvar
-        nvar+=1
-        self._vx_ = nvar
-        nvar+=1
-        if self.Y: 
-            self._vy_ = nvar
-            nvar+=1
-        else:
-            self._vy_ = -1
-        if self.Z: 
-            self._vz_ = nvar
-            nvar+=1
-        else:
-            self._vz_ = -1
-        self._p_  = nvar
-        nvar+=1
-        assert nvar == 2 + self.ndim
-        self.nvar = nvar
-        self.vels=np.array([self._vx_,self._vy_,self._vz_])[:self.ndim]
+        self.variables = [r"$\rho$"]
+        self._d_ = 0
+        self.vels = np.arange(ndim)+1
+        for dim in self.dims2:
+            idim = self.dims2[dim]
+            name = f"v{dim}"
+            self.variables.append(name)
+            self.__setattr__(f"_{name}_",self.vels[idim])
+        self.variables.append("P")
+        self._p_  = self.ndim+1
+        self.nvar = self.ndim+2
 
         for dim in self.dims2:
             n=self.comms.__getattribute__(f"n{dim}")
