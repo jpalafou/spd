@@ -126,13 +126,14 @@ def quadrature_mean(
     fct: Callable[[np.ndarray,int], np.ndarray],
     d: int,
     v: int,
+    light: bool = True,
 ) -> np.ndarray:
     """
     Return an array with the same number of dimensions as `mesh`, the last `d` dimensions reduced by 1,
     containing mean values of `fct` inside mesh control volumes.
     Means are calculated with a Gauss-Legendre quadrature of degree one less than the maximum length of the last `d` dimensions.
     """
-    n = max(mesh.shape[-d:]) - 1
+    n = 2 if light else max(mesh.shape[-d:]) - 1
     x, w = gauss_legendre_quadrature(0.0, 1.0, n)
     pts = mesh[(Ellipsis,) + (slice(-1),)*d + (np.newaxis,)*d]
     pts = np.broadcast_to(pts, pts.shape[:-d] + (n,)*d).copy()
