@@ -14,11 +14,13 @@ def llf(
 ) -> np.ndarray:
     """
     LLF Riemann Solver
-    M_L/M_R = Primitive variables or Conservative variables
-    v_1 velocity normal to the interface
-    v_2 velocity parallel to the interface
+    M_L/M_R: Primitive variables or Conservative variables
+    vels: arrays of velocity indices
+    _p_: pressure/energy index
+    gamma: adiabatic index (ratio of specific heats)
+    min_c2: minimum value allowed for the square of the sound speed
     Output:
-    The resulting fluxes are written in M_R
+    F: Fluxes
     """
     #Density index
     _d_=0 
@@ -57,11 +59,13 @@ def hllc(
 ) -> np.ndarray:
     """
     HLLC Riemann Solver
-    M_L/M_R = Primitive variables or Conservative variables
-    v_1 velocity normal to the interface
-    v_2 velocity parallel to the interface
+    M_L/M_R: Primitive variables or Conservative variables
+    vels: arrays of velocity indices
+    _p_: pressure/energy index
+    gamma: adiabatic index (ratio of specific heats)
+    min_c2: minimum value allowed for the square of the sound speed
     Output:
-    The resulting fluxes are written in M_R
+    F: Fluxes
     """
     #Density index
     _d_ = 0
