@@ -43,26 +43,27 @@ def moncen(dU_L: np.ndarray,
     slope = np.sign(dU_C)*np.minimum(slope,np.abs(dU_C))
     return np.where(dU_L*dU_R>=0,slope,0)     
 
-def compute_slopes(self: Simulator,
-                   M: np.ndarray,
+def compute_slopes(M: np.ndarray,
+                   h_cv: np.ndarray,
+                   h_fp: np.ndarray,
                    idim: int,
+                   slope_limiter: str,
                    gradient: bool=False):
     """
     args: 
-        self:   Simulator object
         M:      Solution vector (conservatives/primitives)
+        h_cv:   vector of cell sizes (distance between cell centers)
+        h_fp:   vector of cell sizes (distance between flux points)
         idim:   index of dimension
     returns:
         S:      Slopes of M
         dMh:    Gradient of M
     """
-    h_cv = self.h_cv[self.dims[idim]]
-    h_fp = self.h_fp[self.dims[idim]]
     dM = (M[cut(1,None,idim)] - M[cut(None,-1,idim)])/h_cv
-    if self.slope_limiter == "minmod":
+    if slope_limiter == "minmod":
         dMh = minmod(dM[cut(None,-1,idim)],dM[cut(1,None,idim)])
 
-    elif self.slope_limiter == "moncen":
+    elif slope_limiter == "moncen":
         dMh = moncen(dM[cut(None,-1,idim)],
                   dM[cut(1,None,idim)],
                   h_cv[cut(None,-1,idim)],
@@ -73,73 +74,9 @@ def compute_slopes(self: Simulator,
     else:
         #Slope*h/2
         return 0.5*dMh*h_fp[cut(1,-1,idim)] 
-
-def interpolate_R(self: Simulator,
-                  M: np.ndarray,
-                  S: np.ndarray,
-                  idim: int)->np.ndarray:
-    """
-    args: 
-        self:   Simulator object
-        M:      Solution vector (conservatives/primitives)
-        idim:   index of dimension
-    returns:
-        MR:     Values interpolated to the right
-    """
-    #MR = M - SlopeC*h/2
-    ngh=self.Nghc
-    crop = lambda start,end,idim : crop_fv(start,end,idim,self.ndim,ngh)
-    return M[crop(ngh,-1,idim)] - S[crop( 1,None,idim)]
-
-def interpolate_L(self: Simulator,
-                  M: np.ndarray,
-                  S: np.ndarray,
-                  idim: int)->np.ndarray:
-    """
-    args: 
-        self:   Simulator object
-        M:      Solution vector (conservatives/primitives)
-        idim:   index of dimension
-    returns:
-        MR:     Values interpolated to the left
-    """
-    #ML = M + SlopeC*h/2
-    ngh=self.Nghc
-    crop = lambda start,end,idim : crop_fv(start,end,idim,self.ndim,ngh)
-    return M[crop(1,-ngh,idim)] + S[crop(None,-1,idim)]        
-
-def solve_riemann_problem(self: Simulator,
-                          dim: str,
-                          prims: bool)->None:
-    """
-    args: 
-        self:   Simulator object
-        dim:    dimension name
-        prims:  Wheter values at faces are primitives
-                or conservatives
-    overwrites:
-        self.F_faces_FB[dim]: Fluxes given by the Riemann solver
-    """
-    idim=self.dims2[dim]
-    vels = np.roll(self.vels,-idim)
-    if self.WB:
-        #Move to solution at interfaces
-        M_eq_faces = self.dm.__getattribute__(f"M_eq_faces_{dim}")
-        self.MR_faces[dim][...] += M_eq_faces
-        self.ML_faces[dim][...] += M_eq_faces
-    self.F_faces_FB[dim] = self.riemann_solver_fv(self.ML_faces[dim],
-                                                  self.MR_faces[dim],
-                                                  vels,
-                                                  self._p_,
-                                                  self.gamma,
-                                                  self.min_c2,
-                                                  prims)
-    if self.WB:
-        #We compute the perturbation over the flux for conservative variables
-        self.F_faces_FB[dim] -= self.dm.__getattribute__(f"F_eq_faces_{dim}")
     
-                
 def MUSCL_fluxes(self: Simulator,
+                 F: dict,
                  dt: float,
                  prims=True)->None:
     """
@@ -153,50 +90,50 @@ def MUSCL_fluxes(self: Simulator,
         self.ML_faces[dim]:   Values interpolated to the left
         self.F_faces_FB[dim]: Fluxes given by the Riemann solver
     """
-    ngh = self.Nghc
-    self.dm.M_fv[...]  = 0
-    #Copy W_cv to active region of M_fv
-    self.fill_active_region(self.dm.W_cv)
-    for dim in self.dims2:
-        self.fv_Boundaries(self.dm.M_fv,dim)
     for dim in self.dims2:
         shift=self.dims2[dim]
         
-        S = compute_slopes(self,self.dm.M_fv,shift)    
+        S = self.compute_slopes(self.dm.M_fv,shift)    
         
-        self.MR_faces[dim][...] = interpolate_R(self,self.dm.M_fv,S,shift)
-        self.ML_faces[dim][...] = interpolate_L(self,self.dm.M_fv,S,shift)
-        solve_riemann_problem(self,dim,prims)
+        self.MR_faces[dim][...] = self.interpolate_R(self.dm.M_fv,S,shift)
+        self.ML_faces[dim][...] = self.interpolate_L(self.dm.M_fv,S,shift)
+        self.solve_riemann_problem(dim,F[dim],prims)
     
-def compute_prediction(self: Simulator,
-                       W: np.ndarray,
-                       dWs: np.ndarray)->None:
+def compute_prediction(W: np.ndarray,
+                       dWs: np.ndarray,
+                       dtW: np.ndarray,
+                       vels: np.array,
+                       ndim: int,
+                       gamma: float,
+                       _d_: int,
+                       _p_: int,
+                       WB: bool,
+                       isothermal: bool,
+                       )->None:
     """
     args: 
-        self:   Simulator object
         W:      Solution vector with primitive variables
         dWs:    Solution vector with slopes 
     overwrites:
-        self.dm.dtM:  Solution vector with predictions 
+        dtW:  Solution vector with predictions 
     """
-    gamma=self.gamma
-    _d_ = self._d_
-    _p_ = self._p_
-    self.dm.dtM[...] = 0
-    for idim in self.dims:
-        vel = self.vels[idim]
+    dtW[...] = 0
+    for idim in range(ndim):
+        vel = vels[idim]
         dW = dWs[idim]
-        self.dm.dtM[_d_] -= (W[vel]*dW[_d_] +       W[_d_]*dW[vel])
-        self.dm.dtM[_p_] -= (W[vel]*dW[_p_] + gamma*W[_p_]*dW[vel])
-        self.dm.dtM[vel] -= (W[vel]*dW[vel]+ dW[_p_]/W[_d_])
-        if self.WB:
-            dW = dWs[idim+self.ndim]
-            self.dm.dtM[_d_] -= (W[vel]*dW[_d_]) 
-            self.dm.dtM[_p_] -= (W[vel]*dW[_p_])
-        for vel2 in self.vels[1:]:
-            self.dm.dtM[vel2] -= W[vel]*dW[vel2]   
+        dtW[_d_] -= (W[vel]*dW[_d_] +       W[_d_]*dW[vel])
+        dtW[_p_] -= (W[vel]*dW[_p_] + gamma*W[_p_]*dW[vel])
+        dtW[vel] -= (W[vel]*dW[vel]+ dW[_p_]/W[_d_])
+        if WB:
+            dW = dWs[idim+ndim]
+            dtW[_d_] -= (W[vel]*dW[_d_]) 
+            dtW[_p_] -= (W[vel]*dW[_p_])
+        for vel2 in vels[1:]:
+            dtW[vel2] -= W[vel]*dW[vel2]
+    dtW[_p_] *= 0 if isothermal else 0
 
 def MUSCL_Hancock_fluxes(self: Simulator,
+                         F: dict,
                          dt: float,
                          prims=True)->None:
     """
@@ -212,23 +149,17 @@ def MUSCL_Hancock_fluxes(self: Simulator,
     """
     dMhs={}
     S={}
-    self.dm.M_fv[...]  = 0
     crop = lambda start,end,idim : crop_fv(start,end,idim,self.ndim,1)
-    #Copy W_cv to active region of M_fv
-    self.fill_active_region(self.dm.W_cv)
-    for dim in self.dims2:
-        self.fv_Boundaries(self.dm.M_fv,dim)
-
     for dim in self.dims2:
         idim=self.dims2[dim]
-        dMh = compute_slopes(self,self.dm.M_fv,idim,gradient=True)
+        dMh = self.compute_slopes(self.dm.M_fv,idim,gradient=True)
         S[idim] = 0.5*dMh*self.h_fp[dim][cut(1,-1,idim)]
         dMhs[idim] = dMh[crop(None,None,idim)]
         if self.WB:
-            dMhs[idim+self.ndim] = compute_slopes(self,self.dm.M_eq_fv,idim,gradient=True)[crop(None,None,idim)]
+            dMhs[idim+self.ndim] = self.compute_slopes(self.dm.M_eq_fv,idim,gradient=True)[crop(None,None,idim)]
     if self.WB:
         self.dm.M_fv += self.dm.M_eq_fv                    
-    compute_prediction(self,self.dm.M_fv[crop(1,-1,0)],dMhs)
+    self.compute_prediction(self.dm.M_fv[crop(1,-1,0)],dMhs)
     if self.WB:
         if self.potential:
             drho = ((self.dm.M_fv[0]-self.dm.M_eq_fv[0])/self.dm.M_fv[0])[crop(1,-1,0)]
@@ -240,11 +171,12 @@ def MUSCL_Hancock_fluxes(self: Simulator,
     
     for dim in self.dims2:
         idim=self.dims2[dim]
-        self.MR_faces[dim][...] = interpolate_R(self,self.dm.M_fv,S[idim],idim)
-        self.ML_faces[dim][...] = interpolate_L(self,self.dm.M_fv,S[idim],idim)
-        solve_riemann_problem(self,dim,prims)
+        self.MR_faces[dim][...] = self.interpolate_R(self.dm.M_fv,S[idim],idim)
+        self.ML_faces[dim][...] = self.interpolate_L(self.dm.M_fv,S[idim],idim)
+        self.solve_riemann_problem(dim,F[dim],prims)
     
-def compute_viscosity(self: Simulator)->None:
+def compute_viscosity(self: Simulator,
+                      F: dict,)->None:
     """
     args: 
         self:   Simulator object
@@ -267,28 +199,30 @@ def compute_viscosity(self: Simulator)->None:
         #Interpolate gradients(all) to faces at dim
         for idim in self.dims:
             self.fill_active_region(dW[idim])
-            if self.BC[dim] == "periodic":
+            if self.BC[dim][0] == "periodic":
                 self.fv_Boundaries(self.dm.M_fv,dim)    
-            S = compute_slopes(self,self.dm.M_fv,shift)
+            S = self.compute_slopes(self.dm.M_fv,shift)
             #Counter the previous choice of values (now right)
-            dW_f[idim] = interpolate_R(self,self.dm.M_fv,S,shift)
+            dW_f[idim] = self.interpolate_R(self.dm.M_fv,S,shift)
         #Add viscous flux
-        self.F_faces_FB[dim][...] -= self.compute_viscous_fluxes(self.ML_faces[dim],dW_f,vels,prims=True)
+        F[dim][...] -= self.compute_viscous_fluxes(self.ML_faces[dim],dW_f,vels,prims=True)
        
 def compute_second_order_fluxes(self: Simulator,
+                                F: dict,
                                 dt: float,
                                 **kwargs)->None:
     """
     args: 
         self:   Simulator object
+        F:      Dictionary with references to Flux arrays
         dt:     timestep
     overwrites:
         self.F_faces_FB[dim]: Second order fluxes
     """
     if self.predictor:
-        MUSCL_Hancock_fluxes(self,dt,**kwargs)
+        MUSCL_Hancock_fluxes(self,F,dt,**kwargs)
     else:
-        MUSCL_fluxes(self,dt,**kwargs)
+        MUSCL_fluxes(self,F,dt,**kwargs)
     if self.viscosity:
-        compute_viscosity(self)
+        compute_viscosity(self,F)
         

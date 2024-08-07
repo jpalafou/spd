@@ -226,7 +226,14 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
                 self.M_ader_fp[dim]+=self.dm.__getattribute__(f"M_eq_fp_{dim}")[:,na]
             self.compute_fluxes(self.F_ader_fp[dim], self.M_ader_fp[dim],vels,prims)
             bc.Boundaries_sd(self,self.M_ader_fp[dim],dim)
-            F = self.riemann_solver_sd(self.ML_fp[dim], self.MR_fp[dim], vels, self._p_, self.gamma, self.min_c2, prims)
+            F = self.riemann_solver_sd(self.ML_fp[dim],
+                                       self.MR_fp[dim],
+                                       vels,
+                                       self._p_,
+                                       self.gamma,
+                                       self.min_c2,
+                                       prims,
+                                       isothermal=self.isothermal)
             bc.apply_interfaces(self,F,self.F_ader_fp[dim],dim)
             if self.WB:
                 #F->F'
@@ -359,6 +366,7 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         if self.WB:
             #U -> U'
             self.dm.U_sp -= self.dm.U_eq_sp
+        #if not(self.godunov):
         self.ader_predictor()
         if self.update=="SD":
             self.ader_update()

@@ -70,9 +70,106 @@ class FV_Simulator(Simulator):
             self.MR_faces[dim] = self.dm.__getattribute__(f"MR_faces_{dim}")
             self.ML_faces[dim] = self.dm.__getattribute__(f"ML_faces_{dim}")
             self.BC_fv[dim] = self.dm.__getattribute__(f"BC_fv_{dim}")
+    
+    def compute_slopes(self,
+                       M: np.ndarray,
+                       idim: int,
+                       gradient: bool=False
+                       )->np.ndarray:
+        return muscl.compute_slopes(M,
+                             self.h_cv[self.dims[idim]],
+                             self.h_fp[self.dims[idim]],
+                             idim,
+                             self.slope_limiter,
+                             gradient)
 
+    def interpolate_R(self,
+                      M: np.ndarray,
+                      S: np.ndarray,
+                      idim: int)->np.ndarray:
+        """
+        args: 
+            M:      Solution vector (conservatives/primitives)
+            idim:   index of dimension
+        returns:
+            MR:     Values interpolated to the right
+        """
+        #MR = M - SlopeC*h/2
+        ngh=self.Nghc
+        crop = lambda start,end,idim : crop_fv(start,end,idim,self.ndim,ngh)
+        return M[crop(ngh,-1,idim)] - S[crop( 1,None,idim)]
+
+    def interpolate_L(self,
+                      M: np.ndarray,
+                      S: np.ndarray,
+                      idim: int)->np.ndarray:
+        """
+        args: 
+            self:   Simulator object
+            M:      Solution vector (conservatives/primitives)
+            idim:   index of dimension
+        returns:
+            MR:     Values interpolated to the left
+        """
+        #ML = M + SlopeC*h/2
+        ngh=self.Nghc
+        crop = lambda start,end,idim : crop_fv(start,end,idim,self.ndim,ngh)
+        return M[crop(1,-ngh,idim)] + S[crop(None,-1,idim)]  
+    
+    def compute_prediction(self,
+                           W: np.ndarray,
+                           dWs: np.ndarray)->None:
+        muscl.compute_prediction(W,
+                                 dWs,
+                                 self.dm.dtM,
+                                 self.vels,
+                                 self.ndim,
+                                 self.gamma,
+                                 self._d_,
+                                 self._p_,
+                                 self.WB,
+                                 self.isothermal)
+
+    def solve_riemann_problem(self,
+                              dim: str,
+                              F: np.ndarray,
+                              prims: bool)->None:
+        """
+        args: 
+            dim:    dimension name
+            F:      Solution vector with Fluxes
+            prims:  Wheter values at faces are primitives
+                    or conservatives
+        overwrites:
+            F: Fluxes given by the Riemann solver
+        """
+        idim=self.dims2[dim]
+        vels = np.roll(self.vels,-idim)
+        if self.WB:
+            #Move to solution at interfaces
+            M_eq_faces = self.dm.__getattribute__(f"M_eq_faces_{dim}")
+            self.MR_faces[dim][...] += M_eq_faces
+            self.ML_faces[dim][...] += M_eq_faces
+        F[...] = self.riemann_solver_fv(self.ML_faces[dim],
+                                        self.MR_faces[dim],
+                                        vels,
+                                        self._p_,
+                                        self.gamma,
+                                        self.min_c2,
+                                        prims,
+                                        isothermal=self.isothermal)
+        if self.WB:
+            #We compute the perturbation over the flux for conservative variables
+            F -= self.dm.__getattribute__(f"F_eq_faces_{dim}")
+    
     def compute_fv_fluxes(self,dt: float)->None:
-        return muscl.compute_second_order_fluxes(self, dt)
+        #Clean array with ghost cells
+        self.dm.M_fv[...]  = 0
+        #Copy W_cv to active region of M_fv
+        self.fill_active_region(self.dm.W_cv)
+        for dim in self.dims2:
+            self.fv_Boundaries(self.dm.M_fv,dim)
+        return muscl.compute_second_order_fluxes(self,self.F_faces_FB,dt)
 
     def fill_active_region(self, M):
         ngh=self.Nghc

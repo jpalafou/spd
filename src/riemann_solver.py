@@ -27,17 +27,17 @@ def llf(
     if prims:
         W_L = M_L
         W_R = M_R
-        U_L = hydro.compute_conservatives(W_L,vels,_p_,gamma)
-        U_R = hydro.compute_conservatives(W_R,vels,_p_,gamma)
+        U_L = hydro.compute_conservatives(W_L,vels,_p_,gamma,**kwargs)
+        U_R = hydro.compute_conservatives(W_R,vels,_p_,gamma,**kwargs)
     else:
         U_L = M_L
         U_R = M_R
-        W_L = hydro.compute_primitives(U_L,vels,_p_,gamma)
-        W_R = hydro.compute_primitives(U_R,vels,_p_,gamma)
+        W_L = hydro.compute_primitives(U_L,vels,_p_,gamma,**kwargs)
+        W_R = hydro.compute_primitives(U_R,vels,_p_,gamma,**kwargs)
     
     v_1 = vels[0]
-    F_L = hydro.compute_fluxes(W_L,vels,_p_,gamma)
-    F_R = hydro.compute_fluxes(W_R,vels,_p_,gamma)
+    F_L = hydro.compute_fluxes(W_L,vels,_p_,gamma,**kwargs)
+    F_R = hydro.compute_fluxes(W_R,vels,_p_,gamma,**kwargs)
     
     c_L = hydro.compute_cs(W_L[_p_],W_L[_d_],gamma,min_c2) + np.abs(W_L[v_1])
     c_R = hydro.compute_cs(W_R[_p_],W_R[_d_],gamma,min_c2) + np.abs(W_R[v_1])
@@ -74,13 +74,13 @@ def hllc(
     if prims:
         W_L = M_L
         W_R = M_R
-        U_L = hydro.compute_conservatives(W_L,vels,_p_,gamma)
-        U_R = hydro.compute_conservatives(W_R,vels,_p_,gamma)
+        U_L = hydro.compute_conservatives(W_L,vels,_p_,gamma,**kwargs)
+        U_R = hydro.compute_conservatives(W_R,vels,_p_,gamma,**kwargs)
     else:
         U_L = M_L
         U_R = M_R
-        W_L = hydro.compute_primitives(U_L,vels,_p_,gamma)
-        W_R = hydro.compute_primitives(U_R,vels,_p_,gamma)
+        W_L = hydro.compute_primitives(U_L,vels,_p_,gamma,**kwargs)
+        W_R = hydro.compute_primitives(U_R,vels,_p_,gamma,**kwargs)
     
     c_L = hydro.compute_cs(W_L[_p_],W_L[_d_],gamma,min_c2) + np.abs(W_L[v_1])
     c_R = hydro.compute_cs(W_R[_p_],W_R[_d_],gamma,min_c2) + np.abs(W_R[v_1])
@@ -130,6 +130,7 @@ def hllc(
     F[_d_,...] = r_gdv*v_gdv
     F[v_1,...] = F[_d_]*v_gdv + P_gdv
     F[_p_,...] = v_gdv*(e_gdv + P_gdv)
+    F[_p_] *= 0 if kwargs["isothermal"] else 1
     for vel in vels[1:]:
         F[vel,...] = F[_d_]*np.where(v_star>0,W_L[vel],W_R[vel])
     return F

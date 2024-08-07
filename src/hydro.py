@@ -43,7 +43,8 @@ def compute_primitives(
         vels: np.array,
         _p_: int,
         gamma: float,
-        W=None)->np.ndarray:
+        W=None,
+        isothermal: bool = False)->np.ndarray:
     """
     INPUT:
     U: Solution array of conseved variables
@@ -62,6 +63,7 @@ def compute_primitives(
         W[vel] = U[vel]/U[0]
         K += W[vel]**2
     K *= 0.5*U[0]
+    K *= 0 if isothermal else 1
     W[_p_] = (gamma-1)*(U[_p_]-K)
     return W
                 
@@ -70,7 +72,8 @@ def compute_conservatives(
         vels: np.array,
         _p_: int,
         gamma: float,
-        U=None)->np.ndarray:
+        U=None,
+        isothermal: bool = False)->np.ndarray:
     """
     INPUT:
     W: Solution array of primitive variables
@@ -89,6 +92,7 @@ def compute_conservatives(
         U[vel] = W[vel]*U[0]
         K += W[vel]**2
     K  *= 0.5*U[0]
+    K *= 0 if isothermal else 1
     U[_p_] = W[_p_]/(gamma-1)+K
     return U
 
@@ -97,7 +101,8 @@ def compute_fluxes(
         vels: np.array,
         _p_: int,
         gamma: float,
-        F=None)->np.ndarray:
+        F=None,
+        isothermal: bool = False)->np.ndarray:
     """
     INPUT:
     W: Solution array of primitive variables
@@ -119,10 +124,12 @@ def compute_fluxes(
         m = W[0]*W[v]
         K += m*W[v]
         F[v,...] = m*W[v1]
+        
     E = W[_p_]/(gamma-1) + 0.5*K
     F[0  ,...] = m
     F[v1,...] = m*W[v1] + W[_p_]
     F[_p_,...] = W[v1]*(E + W[_p_])
+    F[_p_,...] *= 0 if isothermal else 1
     return F
 
 def compute_viscous_fluxes(

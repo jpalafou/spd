@@ -24,6 +24,7 @@ class Simulator:
         nu: float = 1e-4,
         cfl_coeff: float = 0.8,
         min_c2: float = 1E-10,
+        isothermal: bool = False,
         viscosity: bool = False,
         potential: bool = False,
         WB: bool = False,
@@ -70,12 +71,13 @@ class Simulator:
         self.nu=nu
         self.cfl_coeff = cfl_coeff
         self.min_c2 = min_c2
+        self.isothermal = isothermal
         self.viscosity = viscosity
         self.potential = potential
         self.WB = WB
         self.verbose = verbose
         self.comms = CommHelper(self.ndim)
-       
+        self.use_cupy = use_cupy 
         self.dm = GPUDataManager(use_cupy)
 
         self.nghx = Nghc
@@ -159,6 +161,7 @@ class Simulator:
                 self.vels,
                 self._p_,
                 self.gamma,
+                isothermal=self.isothermal,
                 **kwargs)
                 
     def compute_conservatives(self,W,**kwargs)->np.ndarray:
@@ -167,6 +170,7 @@ class Simulator:
                 self.vels,
                 self._p_,
                 self.gamma,
+                isothermal=self.isothermal,
                 **kwargs)
     
     def compute_fluxes(self,F,M,vels,prims)->np.ndarray:
@@ -175,7 +179,12 @@ class Simulator:
             W = M
         else:
             W = self.compute_primitives(M)
-        hydro.compute_fluxes(W,vels,self._p_,self.gamma,F=F)
+        hydro.compute_fluxes(W,
+                             vels,
+                             self._p_,
+                             self.gamma,
+                             F=F,
+                             isothermal=self.isothermal)
 
     def compute_viscous_fluxes(self,M,dMs,vels,prims=False)->np.ndarray:
         assert len(vels)==self.ndim
@@ -190,7 +199,8 @@ class Simulator:
         for idim in self.dims:
             vel = self.vels[idim]
             dUdt[vel,...] += U[  0]*grad_phi[idim]
-            dUdt[_p_,...] += U[vel]*grad_phi[idim]
+            if not(self.isothermal):
+                dUdt[_p_,...] += U[vel]*grad_phi[idim]
             
     def compute_dt(self) -> None:
         pass
