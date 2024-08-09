@@ -10,9 +10,14 @@ from slicing import crop_fv
 
 def minmod(SlopeL: np.ndarray,SlopeR: np.ndarray)->np.ndarray:
     """
-    args: 
+    Returns the minmod limited slopes
+
+    Parameters
+    ----------
         SlopeL/R: Solution vector with Left/Right slopes
-    returns:
+    
+    Returns
+    -------
         Slopes: Limited slopes
     """
     #First compute ratio between slopes SlopeR/SlopeL
@@ -31,11 +36,16 @@ def moncen(dU_L: np.ndarray,
            dx_R: np.ndarray,
            dx_M: np.ndarray)->np.ndarray:
     """
-    args: 
+    Returns the moncen limited slopes
+
+    Parameters
+    ----------
         dU_L/R: Solution vector with Left/Right slopes
         dx_L/R: vector of cell sizes (distance between cell centers)
         dx_M:   vector of cell sizes (distance between flux points)
-    returns:
+
+    Returns
+    -------
         Slopes: Limited slopes
     """
     dU_C = (dx_L*dU_L + dx_R*dU_R)/(dx_L+dx_R)
@@ -43,36 +53,83 @@ def moncen(dU_L: np.ndarray,
     slope = np.sign(dU_C)*np.minimum(slope,np.abs(dU_C))
     return np.where(dU_L*dU_R>=0,slope,0)     
 
-def compute_slopes(M: np.ndarray,
-                   h_cv: np.ndarray,
-                   h_fp: np.ndarray,
-                   idim: int,
-                   slope_limiter: str,
-                   gradient: bool=False):
-    """
-    args: 
-        M:      Solution vector (conservatives/primitives)
-        h_cv:   vector of cell sizes (distance between cell centers)
-        h_fp:   vector of cell sizes (distance between flux points)
-        idim:   index of dimension
-    returns:
-        S:      Slopes of M
-        dMh:    Gradient of M
-    """
-    dM = (M[cut(1,None,idim)] - M[cut(None,-1,idim)])/h_cv
-    if slope_limiter == "minmod":
-        dMh = minmod(dM[cut(None,-1,idim)],dM[cut(1,None,idim)])
+class Slope_limiter:
+    def __init__(self,limiter):
+        self.limiter = limiter
+        self.compute_gradients = self.__getattribute__(f"compute_{limiter}_gradients")
 
-    elif slope_limiter == "moncen":
-        dMh = moncen(dM[cut(None,-1,idim)],
-                  dM[cut(1,None,idim)],
-                  h_cv[cut(None,-1,idim)],
-                  h_cv[cut(1,None,idim)],
-                  h_fp[cut(1,-1,idim)])
-    if gradient:
+    def compute_minmod_gradients(
+            self,
+            M: np.ndarray,
+            h_cv: np.ndarray,
+            h_fp: np.ndarray,
+            idim: int,)->np.ndarray:
+        """
+        Returns array of limited gradients
+
+        Parameters
+        ---------- 
+            M:          Solution vector (conservatives/primitives)
+            h_cv:       vector of cell sizes (distance between cell centers)
+            idim:       index of dimension
+
+        Returns
+        -------
+            dMh:        Gradient of M
+        """
+        dM = (M[cut(1,None,idim)] - M[cut(None,-1,idim)])/h_cv
+        dMh = minmod(dM[cut(None,-1,idim)],dM[cut(1,None,idim)])
         return dMh
-    else:
-        #Slope*h/2
+
+    def compute_moncen_gradients(
+            self,
+            M: np.ndarray,
+            h_cv: np.ndarray,
+            h_fp: np.ndarray,
+            idim: int,)->np.ndarray:
+        """
+        Returns array of limited gradients
+
+        Parameters
+        ---------- 
+            M:          Solution vector (conservatives/primitives)
+            h_cv:       vector of cell sizes (distance between cell centers)
+            h_fp:       vector of cell sizes (distance between flux points)
+            idim:       index of dimension
+
+        Returns
+        -------
+            dMh:        Gradient of M
+        """
+        dM = (M[cut(1,None,idim)] - M[cut(None,-1,idim)])/h_cv
+        dMh = moncen(dM[cut(None,-1,idim)],
+                      dM[cut(1,None,idim)],
+                      h_cv[cut(None,-1,idim)],
+                      h_cv[cut(1,None,idim)],
+                      h_fp[cut(1,-1,idim)])
+        return dMh
+
+    def compute_slopes(
+            self,
+            M: np.ndarray,
+            h_cv: np.ndarray,
+            h_fp: np.ndarray,
+            idim: int,)->np.ndarray:
+        """
+        Returns array of limited slopes
+
+        Parameters
+        ---------- 
+            M:          Solution vector (conservatives/primitives)
+            h_cv:       vector of cell sizes (distance between cell centers)
+            h_fp:       vector of cell sizes (distance between flux points)
+            idim:       index of dimension
+
+        Returns
+        -------
+            S:          Slopes of M
+        """
+        dMh = self.compute_gradient(M,h_cv,h_fp,idim)
         return 0.5*dMh*h_fp[cut(1,-1,idim)] 
     
 def MUSCL_fluxes(self: Simulator,
@@ -80,15 +137,20 @@ def MUSCL_fluxes(self: Simulator,
                  dt: float,
                  prims=True)->None:
     """
-    args: 
+    Returns the MUSCL scheme fluxes for conserved variales
+
+    Parameters
+    ---------- 
         self:   Simulator object
+        F:      Dictionary with references to Flux array
+                F = {x: Fx, y: Fy, z: Fz}
         dt:     timestep
         prims:  Wheter values at faces are primitives
                 or conservatives
-    overwrites:
-        self.MR_faces[dim]:   Values interpolated to the right
-        self.ML_faces[dim]:   Values interpolated to the left
-        self.F_faces_FB[dim]: Fluxes given by the Riemann solver
+    
+    Overwrites
+    ----------
+        F:      Fluxes given by the Riemann solver
     """
     for dim in self.dims2:
         shift=self.dims2[dim]
@@ -111,10 +173,23 @@ def compute_prediction(W: np.ndarray,
                        isothermal: bool,
                        )->None:
     """
-    args: 
+    Returns the prediction for conserved variales
+
+    Parameters
+    ---------- 
         W:      Solution vector with primitive variables
         dWs:    Solution vector with slopes 
-    overwrites:
+        vels:   vels:   array containing the indices of velocity components [vx,vy,vz]
+                in the Solution array. The size of this array has to match the
+                number of dimensions
+        ndim:   Number of dimensions
+        gamma:  Adiabatic index (ratio of specific heats)
+        _d_:    Index of density in the Solution array
+        _p_:    Index of pressure/energy in the Solution array
+        WB:     Wheter to use Well-balanced scheme or not
+        isothermal: Wheter the system is isothermal or not
+    Overwrites
+    ----------
         dtW:  Solution vector with predictions 
     """
     dtW[...] = 0
@@ -137,26 +212,29 @@ def MUSCL_Hancock_fluxes(self: Simulator,
                          dt: float,
                          prims=True)->None:
     """
-    args: 
+    Parameters
+    ---------- 
         self:   Simulator object
+        F:      Dictionary with references to Flux array
+                F = {x: Fx, y: Fy, z: Fz}
         dt:     timestep
         prims:  Wheter values at faces are primitives
                 or conservatives
-    overwrites:
-        self.MR_faces[dim]:   Values interpolated to the right
-        self.ML_faces[dim]:   Values interpolated to the left
-        self.F_faces_FB[dim]: Fluxes given by the Riemann solver
+    
+    Overwrites
+    ----------
+        F:      Fluxes given by the Riemann solver
     """
     dMhs={}
     S={}
     crop = lambda start,end,idim : crop_fv(start,end,idim,self.ndim,1)
     for dim in self.dims2:
         idim=self.dims2[dim]
-        dMh = self.compute_slopes(self.dm.M_fv,idim,gradient=True)
+        dMh = self.compute_gradients(self.dm.M_fv,idim)
         S[idim] = 0.5*dMh*self.h_fp[dim][cut(1,-1,idim)]
         dMhs[idim] = dMh[crop(None,None,idim)]
         if self.WB:
-            dMhs[idim+self.ndim] = self.compute_slopes(self.dm.M_eq_fv,idim,gradient=True)[crop(None,None,idim)]
+            dMhs[idim+self.ndim] = self.compute_gradients(self.dm.M_eq_fv,idim)[crop(None,None,idim)]
     if self.WB:
         self.dm.M_fv += self.dm.M_eq_fv                    
     self.compute_prediction(self.dm.M_fv[crop(1,-1,0)],dMhs)
@@ -178,10 +256,15 @@ def MUSCL_Hancock_fluxes(self: Simulator,
 def compute_viscosity(self: Simulator,
                       F: dict,)->None:
     """
-    args: 
+    Parameters
+    ---------- 
         self:   Simulator object
-    overwrites:
-        self.F_faces_FB[dim]: Adds viscous fluxes
+        F:      Dictionary with references to Flux array
+                F = {x: Fx, y: Fy, z: Fz}
+    
+    Overwrites
+    ----------
+        F:      Fluxes given by the Riemann solver
     """
     ngh=self.Nghc
     dW={}
@@ -212,12 +295,18 @@ def compute_second_order_fluxes(self: Simulator,
                                 dt: float,
                                 **kwargs)->None:
     """
-    args: 
+    Computes fluxes with a limited second order scheme
+
+    Parameters
+    ---------- 
         self:   Simulator object
-        F:      Dictionary with references to Flux arrays
+        F:      Dictionary with references to Flux array
+                F = {x: Fx, y: Fy, z: Fz}
         dt:     timestep
-    overwrites:
-        self.F_faces_FB[dim]: Second order fluxes
+    
+    Overwrites
+    ----------
+        F:      Fluxes given by the Riemann solver
     """
     if self.predictor:
         MUSCL_Hancock_fluxes(self,F,dt,**kwargs)

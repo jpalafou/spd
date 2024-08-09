@@ -22,8 +22,8 @@ class FV_Simulator(Simulator):
         **kwargs):
         super().__init__(*args, **kwargs)
         self.riemann_solver_fv = riemann_solver_fv
-        self.slope_limiter = slope_limiter
         self.predictor = predictor
+        self.slope_limiter = muscl.Slope_limiter(slope_limiter)
 
     def array_FV(self,nvar,dim=None,ngh=0)->np.ndarray:
         shape = [nvar] 
@@ -74,14 +74,20 @@ class FV_Simulator(Simulator):
     def compute_slopes(self,
                        M: np.ndarray,
                        idim: int,
-                       gradient: bool=False
                        )->np.ndarray:
-        return muscl.compute_slopes(M,
+        return self.slope_limiter.compute_slopes(M,
+                           self.h_cv[self.dims[idim]],
+                           self.h_fp[self.dims[idim]],
+                           idim)
+    
+    def compute_gradients(self,
+                       M: np.ndarray,
+                       idim: int,
+                       )->np.ndarray: 
+        return self.slope_limiter.compute_gradients(M,
                              self.h_cv[self.dims[idim]],
                              self.h_fp[self.dims[idim]],
-                             idim,
-                             self.slope_limiter,
-                             gradient)
+                             idim)
 
     def interpolate_R(self,
                       M: np.ndarray,
