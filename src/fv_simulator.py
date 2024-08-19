@@ -24,6 +24,7 @@ class FV_Simulator(Simulator):
         self.riemann_solver_fv = riemann_solver_fv
         self.predictor = predictor
         self.slope_limiter = muscl.Slope_limiter(slope_limiter)
+        self.fv_scheme = muscl.MUSCL_Hancock_fluxes if predictor else muscl.MUSCL_fluxes
 
     def array_FV(self,nvar,dim=None,ngh=0)->np.ndarray:
         shape = [nvar] 
@@ -175,11 +176,20 @@ class FV_Simulator(Simulator):
         self.fill_active_region(self.dm.W_cv)
         for dim in self.dims2:
             self.fv_Boundaries(self.dm.M_fv,dim)
-        return muscl.compute_second_order_fluxes(self,self.F_faces_FB,dt)
+        
+        self.fv_fluxes(self.F_faces_FB,dt)
 
     def fill_active_region(self, M):
         ngh=self.Nghc
         self.dm.M_fv[(Ellipsis,)+tuple(repeat(slice(ngh,-ngh),self.ndim))] = M
+
+    def fv_fluxes(self,
+                  F: dict,
+                  dt: float,
+                  **kwargs)->None:
+        self.fv_scheme(self,F,dt,**kwargs)
+        if self.viscosity:
+            muscl.compute_viscosity(self,F)
 
     def fv_apply_fluxes(self,dt):
         dUdt = self.dm.U_cv.copy()*0

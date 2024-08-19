@@ -8,106 +8,75 @@ from simulator import Simulator
 from slicing import cut
 from slicing import crop_fv
 
-def minmod(SlopeL: np.ndarray,SlopeR: np.ndarray)->np.ndarray:
-    """
-    Returns the minmod limited slopes
-
-    Parameters
-    ----------
-        SlopeL/R: Solution vector with Left/Right slopes
-    
-    Returns
-    -------
-        Slopes: Limited slopes
-    """
-    #First compute ratio between slopes SlopeR/SlopeL
-    #Then limit the ratio to be lower than 1
-    #Finally, limit the ratio to be positive and multiply
-    #  by SlopeL to get the limited slope at the cell center
-    #We use "where" instead of "maximum/minimum" as it doesn't
-    # propagte the NaNs caused when SlopeL=0
-    ratio = SlopeR/SlopeL
-    ratio = np.where(ratio<1,ratio,1)
-    return np.where(ratio>0,ratio,0)*SlopeL
-
-def moncen(dU_L: np.ndarray,
-           dU_R: np.ndarray,
-           dx_L: np.ndarray,
-           dx_R: np.ndarray,
-           dx_M: np.ndarray)->np.ndarray:
-    """
-    Returns the moncen limited slopes
-
-    Parameters
-    ----------
-        dU_L/R: Solution vector with Left/Right slopes
-        dx_L/R: vector of cell sizes (distance between cell centers)
-        dx_M:   vector of cell sizes (distance between flux points)
-
-    Returns
-    -------
-        Slopes: Limited slopes
-    """
-    dU_C = (dx_L*dU_L + dx_R*dU_R)/(dx_L+dx_R)
-    slope = np.minimum(np.abs(2*dU_L*dx_L/dx_M),np.abs(2*dU_R*dx_R/dx_M))
-    slope = np.sign(dU_C)*np.minimum(slope,np.abs(dU_C))
-    return np.where(dU_L*dU_R>=0,slope,0)     
-
 class Slope_limiter:
     def __init__(self,limiter):
         self.limiter = limiter
-        self.compute_gradients = self.__getattribute__(f"compute_{limiter}_gradients")
+        self.compute_gradients = self.gradient_limiter(self.__getattribute__(limiter))
 
-    def compute_minmod_gradients(
-            self,
+    def minmod(self,
+               SlopeL: np.ndarray,
+               SlopeR: np.ndarray,
+               **kwargs)->np.ndarray:
+        """
+        Returns the minmod limited slopes
+
+        Parameters
+        ----------
+            SlopeL/R: Solution vector with Left/Right slopes
+
+        Returns
+        -------
+            Slopes: Limited slopes
+        """
+        #First compute ratio between slopes SlopeR/SlopeL
+        #Then limit the ratio to be lower than 1
+        #Finally, limit the ratio to be positive and multiply
+        #  by SlopeL to get the limited slope at the cell center
+        #We use "where" instead of "maximum/minimum" as it doesn't
+        # propagte the NaNs caused when SlopeL=0
+        ratio = SlopeR/SlopeL
+        ratio = np.where(ratio<1,ratio,1)
+        return np.where(ratio>0,ratio,0)*SlopeL
+
+    def moncen(self,
+               dU_L: np.ndarray,
+               dU_R: np.ndarray,
+               dx_L: np.ndarray,
+               dx_R: np.ndarray,
+               dx_M: np.ndarray)->np.ndarray:
+        """
+        Returns the moncen limited slopes
+
+        Parameters
+        ----------
+            dU_L/R: Solution vector with Left/Right slopes
+            dx_L/R: vector of cell sizes (distance between cell centers)
+            dx_M:   vector of cell sizes (distance between flux points)
+
+        Returns
+        -------
+            Slopes: Limited slopes
+        """
+        dU_C = (dx_L*dU_L + dx_R*dU_R)/(dx_L+dx_R)
+        slope = np.minimum(np.abs(2*dU_L*dx_L/dx_M),np.abs(2*dU_R*dx_R/dx_M))
+        slope = np.sign(dU_C)*np.minimum(slope,np.abs(dU_C))
+        return np.where(dU_L*dU_R>=0,slope,0)     
+
+    def gradient_limiter(self,limiter):
+        def limit_gradients(
             M: np.ndarray,
             h_cv: np.ndarray,
             h_fp: np.ndarray,
             idim: int,)->np.ndarray:
-        """
-        Returns array of limited gradients
 
-        Parameters
-        ---------- 
-            M:          Solution vector (conservatives/primitives)
-            h_cv:       vector of cell sizes (distance between cell centers)
-            idim:       index of dimension
-
-        Returns
-        -------
-            dMh:        Gradient of M
-        """
-        dM = (M[cut(1,None,idim)] - M[cut(None,-1,idim)])/h_cv
-        dMh = minmod(dM[cut(None,-1,idim)],dM[cut(1,None,idim)])
-        return dMh
-
-    def compute_moncen_gradients(
-            self,
-            M: np.ndarray,
-            h_cv: np.ndarray,
-            h_fp: np.ndarray,
-            idim: int,)->np.ndarray:
-        """
-        Returns array of limited gradients
-
-        Parameters
-        ---------- 
-            M:          Solution vector (conservatives/primitives)
-            h_cv:       vector of cell sizes (distance between cell centers)
-            h_fp:       vector of cell sizes (distance between flux points)
-            idim:       index of dimension
-
-        Returns
-        -------
-            dMh:        Gradient of M
-        """
-        dM = (M[cut(1,None,idim)] - M[cut(None,-1,idim)])/h_cv
-        dMh = moncen(dM[cut(None,-1,idim)],
-                      dM[cut(1,None,idim)],
-                      h_cv[cut(None,-1,idim)],
-                      h_cv[cut(1,None,idim)],
-                      h_fp[cut(1,-1,idim)])
-        return dMh
+            dM = (M[cut(1,None,idim)] - M[cut(None,-1,idim)])/h_cv
+            dMh = limiter(dM[cut(None,-1,idim)],
+                          dM[cut(1,None,idim)],
+                          dx_L = h_cv[cut(None,-1,idim)],
+                          dx_R = h_cv[cut(1,None,idim)],
+                          dx_M = h_fp[cut(1,-1,idim)])
+            return dMh
+        return limit_gradients 
 
     def compute_slopes(
             self,
@@ -289,29 +258,4 @@ def compute_viscosity(self: Simulator,
             dW_f[idim] = self.interpolate_R(self.dm.M_fv,S,shift)
         #Add viscous flux
         F[dim][...] -= self.compute_viscous_fluxes(self.ML_faces[dim],dW_f,vels,prims=True)
-       
-def compute_second_order_fluxes(self: Simulator,
-                                F: dict,
-                                dt: float,
-                                **kwargs)->None:
-    """
-    Computes fluxes with a limited second order scheme
-
-    Parameters
-    ---------- 
-        self:   Simulator object
-        F:      Dictionary with references to Flux array
-                F = {x: Fx, y: Fy, z: Fz}
-        dt:     timestep
-    
-    Overwrites
-    ----------
-        F:      Fluxes given by the Riemann solver
-    """
-    if self.predictor:
-        MUSCL_Hancock_fluxes(self,F,dt,**kwargs)
-    else:
-        MUSCL_fluxes(self,F,dt,**kwargs)
-    if self.viscosity:
-        compute_viscosity(self,F)
         
