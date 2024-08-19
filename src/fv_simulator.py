@@ -174,9 +174,9 @@ class FV_Simulator(Simulator):
         self.dm.M_fv[...]  = 0
         #Copy W_cv to active region of M_fv
         self.fill_active_region(self.dm.W_cv)
-        for dim in self.dims2:
-            self.fv_Boundaries(self.dm.M_fv,dim)
-        
+        #Fill ghost zones
+        self.fv_Boundaries(self.dm.M_fv)
+        #Compute fluxes
         self.fv_fluxes(self.F_faces_FB,dt)
 
     def fill_active_region(self, M):
@@ -228,7 +228,8 @@ class FV_Simulator(Simulator):
 
     def fv_store_BC(self,
              M: np.ndarray,
-             dim: str) -> None:
+             dim: str,
+             all: bool = True) -> None:
         """
         Stores the solution of ngh layers in the active region
         """    
@@ -241,16 +242,16 @@ class FV_Simulator(Simulator):
         for side in [0,1]:
             if  BC[side] == "periodic":
                 self.BC_fv[dim][side] = M[cuts[side]]
-            elif BC[side] == "reflective":
+            elif BC[side] == "reflective" and all:
                 self.BC_fv[dim][side] = M[cuts[1-side]]
                 self.BC_fv[dim][side][self.vels[idim]] *= -1
-            elif BC[side] == "gradfree":
+            elif BC[side] == "gradfree" and all:
                 self.BC_fv[dim][side] = M[cuts[1-side]]
             elif BC[side] == "ic":
                 next
             elif BC[side] == "pressure":
                 next
-            elif BC[side] == "eq":
+            elif BC[side] == "eq" and all:
                 self.BC_fv[dim][side][...] = 0
             else:
                 raise("Undetermined boundary type")
@@ -266,11 +267,12 @@ class FV_Simulator(Simulator):
         self.dm.M_fv[cut(-ngh,None,idim)] = self.BC_fv[dim][1]
 
     def fv_Boundaries(self,
-                    M: np.ndarray,
-                    dim: str):
-        self.fv_store_BC(M,dim)
-        self.Comms_fv(M,dim)
-        self.fv_apply_BC(dim)
+                      M: np.ndarray,
+                      all=True):
+        for dim in self.dims2:
+            self.fv_store_BC(M,dim,all)
+            self.Comms_fv(M,dim)
+            self.fv_apply_BC(dim)
     
     def Comms_fv(self,
              M: np.ndarray,

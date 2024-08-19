@@ -15,8 +15,7 @@ def detect_troubles(self: Simulator):
     # NAD Check for numerically adimissible values
     ##############################################
     # First check if DMP criteria is met, if it is we can avoid computing alpha
-    for dim in self.dims2:
-        self.fv_Boundaries(self.dm.M_fv,dim)
+    self.fv_Boundaries(self.dm.M_fv)
     W_max = self.dm.M_fv.copy()
     W_min = self.dm.M_fv.copy()
     for dim in self.dims:
@@ -41,11 +40,11 @@ def detect_troubles(self: Simulator):
     # Now check for smooth extrema and relax the criteria for such cases
     if np.any(possible_trouble) and self.p > 1 and self.SED:
         self.fill_active_region(W_new)
+        self.fv_Boundaries(self.dm.M_fv)
         alpha = W_new*0 + 1
         for dim in self.dims2:
-            shift = self.dims2[dim]
-            self.fv_Boundaries(self.dm.M_fv,dim)
-            alpha_new = compute_smooth_extrema(self, self.dm.M_fv, dim)[crop(None,None,shift)]
+            idim = self.dims2[dim]
+            alpha_new = compute_smooth_extrema(self, self.dm.M_fv, dim)[crop(None,None,idim)]
             alpha = np.where(alpha_new < alpha, alpha_new, alpha)
 
         possible_trouble *= np.where(alpha<1, 1, 0)
@@ -73,9 +72,7 @@ def detect_troubles(self: Simulator):
     #self.n_troubles += self.dm.troubles.sum()
     self.dm.M_fv[...] = 0
     self.fill_active_region(self.dm.troubles)
-    for dim in self.dims2:
-        if self.BC[dim] == "periodic":
-            self.fv_Boundaries(self.dm.M_fv,dim)
+    self.fv_Boundaries(self.dm.M_fv,all=False)
     trouble = self.dm.M_fv[0]
     self.dm.theta[0][...] = trouble
     theta = self.dm.theta[0]

@@ -251,8 +251,7 @@ def compute_viscosity(self: Simulator,
         #Interpolate gradients(all) to faces at dim
         for idim in self.dims:
             self.fill_active_region(dW[idim])
-            if self.BC[dim][0] == "periodic":
-                self.fv_Boundaries(self.dm.M_fv,dim)    
+            self.fv_Boundaries(self.dm.M_fv,all=False)    
             S = self.compute_slopes(self.dm.M_fv,shift)
             #Counter the previous choice of values (now right)
             dW_f[idim] = self.interpolate_R(self.dm.M_fv,S,shift)
