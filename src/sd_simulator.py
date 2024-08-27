@@ -21,13 +21,13 @@ import riemann_solver as rs
 class SD_Simulator(Simulator):
     def __init__(
         self,
-        riemann_solver_sd: Callable = rs.llf,
+        riemann_solver_sd: str = "llf",
         update: str = "SD",
         *args,
         **kwargs
     ):
         super().__init__(*args, **kwargs)
-        self.riemann_solver_sd = riemann_solver_sd
+        self.riemann_solver_sd = rs.Riemann_solver(riemann_solver_sd).solver
         self.update = update
         self.x, self.w = gauss_legendre_quadrature(0.0, 1.0, self.p)
         sp = solution_points(0.0, 1.0, self.p)

@@ -15,13 +15,13 @@ from slicing import cut, crop_fv
 class FV_Simulator(Simulator):
     def __init__(
         self,
-        riemann_solver_fv: Callable = rs.llf,
+        riemann_solver_fv: str = "llf",
         slope_limiter: str = "minmod",
         predictor: bool = True,
         *args,
         **kwargs):
         super().__init__(*args, **kwargs)
-        self.riemann_solver_fv = riemann_solver_fv
+        self.riemann_solver_fv = rs.Riemann_solver(riemann_solver_fv).solver
         self.predictor = predictor
         self.slope_limiter = muscl.Slope_limiter(slope_limiter)
         self.fv_scheme = muscl.MUSCL_Hancock_fluxes if predictor else muscl.MUSCL_fluxes
