@@ -25,7 +25,7 @@ class Riemann_solver:
                 U_R = M_R
                 W_L = hydro.compute_primitives(U_L,vels,_p_,gamma,**kwargs)
                 W_R = hydro.compute_primitives(U_R,vels,_p_,gamma,**kwargs)
-            return solver(W_L,W_R,U_L,U_R,vels,_p_,gamma,min_c2,prims)
+            return solver(W_L,W_R,U_L,U_R,vels,_p_,gamma,min_c2)
         return solve
 
     def llf(
@@ -38,8 +38,6 @@ class Riemann_solver:
         _p_: int,
         gamma: float,
         min_c2: float,
-        prims: bool,
-        *args,
         **kwargs,
     ) -> np.ndarray:
         """
