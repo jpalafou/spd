@@ -114,8 +114,7 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         Allocate arrays to be used in trouble detection
         """
         self.dm.troubles  = self.array_FV(self.p+1,1)
-        if self.blending:
-            self.dm.theta = self.array_FV(self.p+1,1,ngh=self.Nghc)
+        self.dm.theta = self.array_FV(self.p+1,1,ngh=self.Nghc)
         for dim in self.dims2:
             #Conservative/Primitive varibles at flux points
             self.dm.__setattr__(f"affected_faces_{dim}",self.array_FV(self.p+1,1,dim=dim))
