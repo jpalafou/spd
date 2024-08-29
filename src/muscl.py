@@ -1,8 +1,4 @@
-from typing import Callable,Tuple,Union
-import sys
 import numpy as np
-import cupy as cp
-from itertools import repeat
 from simulator import Simulator
 
 from slicing import cut
@@ -200,7 +196,9 @@ def MUSCL_Hancock_fluxes(self: Simulator,
     for dim in self.dims2:
         idim=self.dims2[dim]
         dMh = self.compute_gradients(self.dm.M_fv,idim)
+        #Compute and store slopes in a dictionary
         S[idim] = 0.5*dMh*self.h_fp[dim][cut(1,-1,idim)]
+        #Store gradients in a dictionary
         dMhs[idim] = dMh[crop(None,None,idim)]
         if self.WB:
             dMhs[idim+self.ndim] = self.compute_gradients(self.dm.M_eq_fv,idim)[crop(None,None,idim)]

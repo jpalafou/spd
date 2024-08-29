@@ -1,7 +1,4 @@
-from typing import Union
-
 import numpy as np
-import cupy as cp
 
 def compute_cs2(
         P: np.ndarray,

@@ -1,5 +1,3 @@
-from typing import Callable,Tuple,Union
-import sys
 import numpy as np
 
 from sd_simulator import SD_Simulator

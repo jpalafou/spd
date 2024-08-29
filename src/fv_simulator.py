@@ -1,11 +1,6 @@
-from typing import Callable,Tuple,Union
-import sys
 import numpy as np
-import cupy as cp
 from itertools import repeat
 from collections import defaultdict
-from data_management import CupyLocation
-from data_management import GPUDataManager
 from simulator import Simulator
 import riemann_solver as rs
 import muscl
@@ -287,7 +282,7 @@ class FV_Simulator(Simulator):
         Buffers={}
         for side in [0,1]:
             Buffer = M[cuts[1-side]]
-            Buffer = self.dm.xp.asnumpy(Buffer).flatten()
+            Buffer = self.dm.asnumpy(Buffer).flatten()
             Buffers[side] = Buffer
         
         neighbour = comms.left[idim] if rank%2 else comms.right[idim]

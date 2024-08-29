@@ -1,5 +1,4 @@
 import numpy as np
-from typing import Tuple
 from sd_simulator import SD_Simulator
 from slicing import cut
 from slicing import indices
@@ -90,7 +89,7 @@ def Comms_fp(self: SD_Simulator,
     Buffers={}
     for side in [0,1]:
         Buffer = M[indices2(-side,self.ndim,idim)]
-        Buffer = self.dm.xp.asnumpy(Buffer).flatten()
+        Buffer = self.dm.asnumpy(Buffer).flatten()
         Buffers[side] = Buffer
 
     neighbour = comms.left[idim] if rank%2 else comms.right[idim]
