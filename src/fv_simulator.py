@@ -273,31 +273,10 @@ class FV_Simulator(Simulator):
              M: np.ndarray,
              dim: str):
         comms = self.comms
-        rank = comms.rank
-        rank_dim = comms.__getattribute__(dim)    
-        idim = self.dims2[dim]
-        ngh=self.Nghc
-        cuts=(cut(-2*ngh,  -ngh,idim),
-              cut(   ngh, 2*ngh,idim))
-        Buffers={}
-        for side in [0,1]:
-            Buffer = M[cuts[1-side]]
-            Buffer = self.dm.asnumpy(Buffer).flatten()
-            Buffers[side] = Buffer
-        
-        neighbour = comms.left[idim] if rank%2 else comms.right[idim]
-        side = rank_dim%2
-        self.send_recv_fv(neighbour,Buffers[side],dim,side)
-
-        neighbour = comms.right[idim] if rank%2 else comms.left[idim]
-        side = 1-rank_dim%2
-        self.send_recv_fv(neighbour,Buffers[side],dim,side)
-
-    def send_recv_fv(self, neighbour, Buffer, dim, side):
-        comms = self.comms
-        rank = comms.rank
-        if neighbour != rank:
-            comms.send_recv_replace(Buffer,neighbour,side)
-            BC = self.BC_fv[dim][side]
-            self.BC_fv[dim][side][...] = self.dm.xp.asarray(Buffer).reshape(BC.shape)
+        comms.Comms_fv(self.dm,
+                       M,
+                       self.BC_fv,
+                       self.dims2[dim],
+                       dim,
+                       self.Nghc)
       

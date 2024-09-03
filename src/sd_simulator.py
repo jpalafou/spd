@@ -224,3 +224,14 @@ class SD_Simulator(Simulator):
         dt = self.comms.reduce_min(dt)
         self.dm.dt = self.cfl_coeff*dt
 
+    def Comms_fp(self,
+             M: np.ndarray,
+             dim: str):
+            comms = self.comms
+            comms.Comms_sd(self.dm,
+                       M,
+                       self.BC_fp,
+                       self.dims2[dim],
+                       dim,
+                       self.Nghc)
+

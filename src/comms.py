@@ -4,10 +4,11 @@ try:
 except:
     MPI_AVAILABLE = False
 import numpy as np
+from slicing import indices2,cuts
 
 class CommHelper():
     def __init__(self,ndim):
-        
+        self.ndim = ndim
         if MPI_AVAILABLE:
             self.comm = MPI.COMM_WORLD
             self.size = self.comm.Get_size()
@@ -40,13 +41,8 @@ class CommHelper():
             self.left[dim]  = np.roll(mesh,+1,axis=2-dim)[self.z,self.y,self.x]
             self.right[dim] = np.roll(mesh,-1,axis=2-dim)[self.z,self.y,self.x]
 
-    def send_recv(self, neighbour, send_buffer, recv_buffer):
-        if self.rank%2:
-            self.comm.Send(send_buffer, dest=neighbour)
-            self.comm.Recv(recv_buffer, source=neighbour)
-        else:
-            self.comm.Recv(recv_buffer, source=neighbour)
-            self.comm.Send(send_buffer, dest=neighbour)
+        self.Comms_fv = self.Comms(cuts)
+        self.Comms_sd = self.Comms(indices2)
     
     def send_recv_replace(self,buffer,neighbour,side):
         self.comm.Sendrecv_replace(buffer,neighbour,sendtag=side,source=neighbour,recvtag=1-side)
@@ -56,3 +52,37 @@ class CommHelper():
             return self.comm.allreduce(M,op=MPI.MIN)
         else:
             return M
+        
+    def Comms(self, function):
+        rank = self.rank  
+        ndim = self.ndim
+        def communicate(
+             dm,
+             M: np.ndarray,
+             BC: dict,
+             idim: int,
+             dim: str,
+             ngh: int=0):
+            rank_dim = self.__getattribute__(dim) 
+            Buffers={}
+            for side in [0,1]:
+                Buffer = M[function(-side,ndim,idim,ngh=ngh)]
+                #print(rank, dim, side, Buffer.shape, BC[dim][side].shape)
+                Buffer = dm.asnumpy(Buffer).flatten()
+                Buffers[side] = Buffer
+    
+            neighbour = self.left[idim] if rank%2 else self.right[idim]
+            side = rank_dim%2
+            self.send_recv(dm, neighbour, BC[dim][side], Buffers[side], side)
+        
+            neighbour = self.right[idim] if rank%2 else self.left[idim]
+            side = 1-rank_dim%2
+            self.send_recv(dm, neighbour, BC[dim][side], Buffers[side], side)
+    
+        return communicate
+
+    def send_recv(self, dm, neighbour, BC, Buffer, side):
+        rank = self.rank
+        if neighbour != rank:
+            self.send_recv_replace(Buffer,neighbour,side)
+            BC[...] = dm.xp.asarray(Buffer).reshape(BC.shape)
