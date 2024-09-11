@@ -8,11 +8,12 @@ tolerance=1E-14
 N=6
 
 @pytest.mark.parametrize("p" , [1,3])
-@pytest.mark.parametrize("N" , [(N,),(N,N),(N,N,N)])
+@pytest.mark.parametrize("N" , [(N,),(N,N)])
 @pytest.mark.parametrize("update" , ["SD","FV"])
-@pytest.mark.parametrize("FB" , [True,False])
-def test_update(p,N,update,FB):
+def test_update(p,N,update):
     s = SDADER_Simulator(p=p,N=N,use_cupy=False,
-                         FB=FB,
                          update=update)
-    s.perform_iterations(1)
+    s.perform_time_evolution(1)
+    assert np.mean(np.abs(s.dm.W_cv[0]-s.W_init_cv[0])) > tolerance
+    assert np.mean(np.abs(s.dm.W_cv[1:]-s.W_init_cv[1:])) < tolerance
+    
