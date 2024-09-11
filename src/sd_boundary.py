@@ -11,10 +11,10 @@ def store_interfaces(self: SD_Simulator,
     Stores the values of flux points at the extremes of elements(0,-1)
     These arrays are then used to solve the Riemann problem
     """
-    shift=self.ndim+self.dims2[dim]-1
-    axis = -(self.dims2[dim]+1)
-    self.MR_fp[dim][cut(None,-1,shift)] = M[indices( 0,self.dims2[dim])]
-    self.ML_fp[dim][cut(1 ,None,shift)] = M[indices(-1,self.dims2[dim])]
+    shift=self.ndim+self.dims[dim]-1
+    axis = -(self.dims[dim]+1)
+    self.MR_fp[dim][cut(None,-1,shift)] = M[indices( 0,self.dims[dim])]
+    self.ML_fp[dim][cut(1 ,None,shift)] = M[indices(-1,self.dims[dim])]
 
 def apply_interfaces(self: SD_Simulator,
                      F: np.ndarray,
@@ -25,9 +25,9 @@ def apply_interfaces(self: SD_Simulator,
     This is done after the Riemann problem at element interfaces has been
     solved. 
     """
-    shift=self.ndim+self.dims2[dim]-1
-    F_fp[indices( 0,self.dims2[dim])] = F[cut(None,-1,shift)]
-    F_fp[indices(-1,self.dims2[dim])] = F[cut(1, None,shift)]
+    shift=self.ndim+self.dims[dim]-1
+    F_fp[indices( 0,self.dims[dim])] = F[cut(None,-1,shift)]
+    F_fp[indices(-1,self.dims[dim])] = F[cut(1, None,shift)]
 
 def store_BC(self: SD_Simulator,
              BC_array: np.ndarray,
@@ -37,7 +37,7 @@ def store_BC(self: SD_Simulator,
     Stores the solution at flux points for the extremes of the domain
     These boundary arrays can then be communicated between domains
     """    
-    idim = self.dims2[dim]
+    idim = self.dims[dim]
     BC = self.BC[dim]
     for side in [0,1]:
         if  BC[side] == "periodic":
@@ -63,7 +63,7 @@ def apply_BC(self: SD_Simulator,
     Fills up the missing first column of M_L
     and the missing last column of M_R
     """
-    shift=self.ndim+self.dims2[dim]-1
+    shift=self.ndim+self.dims[dim]-1
     self.ML_fp[dim][indices( 0,shift)] = self.BC_fp[dim][0]
     self.MR_fp[dim][indices(-1,shift)] = self.BC_fp[dim][1]
 

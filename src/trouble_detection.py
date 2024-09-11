@@ -18,9 +18,9 @@ def detect_troubles(self: Simulator):
     self.fv_Boundaries(self.dm.M_fv)
     W_max = self.dm.M_fv.copy()
     W_min = self.dm.M_fv.copy()
-    for dim in self.dims:
-        W_max = np.maximum(compute_W_max(self.dm.M_fv,dim),W_max)
-        W_min = np.minimum(compute_W_min(self.dm.M_fv,dim),W_min)
+    for idim in self.idims:
+        W_max = np.maximum(compute_W_max(self.dm.M_fv,idim),W_max)
+        W_min = np.minimum(compute_W_min(self.dm.M_fv,idim),W_min)
             
     W_max = self.crop(W_max,ngh=ngh)
     W_min = self.crop(W_min,ngh=ngh)
@@ -42,8 +42,8 @@ def detect_troubles(self: Simulator):
         self.fill_active_region(W_new)
         self.fv_Boundaries(self.dm.M_fv)
         alpha = W_new*0 + 1
-        for dim in self.dims2:
-            idim = self.dims2[dim]
+        for dim in self.dims:
+            idim = self.dims[dim]
             alpha_new = compute_smooth_extrema(self, self.dm.M_fv, dim)[crop(None,None,idim)]
             alpha = np.where(alpha_new < alpha, alpha_new, alpha)
 
@@ -80,38 +80,38 @@ def detect_troubles(self: Simulator):
     if self.blending:
         apply_blending(self,trouble,theta)
 
-    for dim in self.dims2:
-        idim = self.dims2[dim]
+    for dim in self.dims:
+        idim = self.dims[dim]
         affected_faces = self.dm.__getattribute__(f"affected_faces_{dim}")
         affected_faces[...] = 0
         affected_faces[...] = np.maximum(theta[crop(ngh-1,-ngh,idim)],theta[crop(ngh,-(ngh-1),idim)])
 
-def compute_W_ex(W, dim, f):
+def compute_W_ex(W, idim, f):
     W_f = W.copy()
     # W_f(i) = f(W(i-1),W(i),W(i+1))
     # First comparing W(i) and W(i+1)
-    W_f[cut(None,-1,dim)] = f(  W[cut(None,-1,dim)],W[cut(1, None,dim)])
+    W_f[cut(None,-1,idim)] = f(  W[cut(None,-1,idim)],W[cut(1, None,idim)])
     # Now comparing W_f(i) and W_(i-1)
-    W_f[cut( 1,None,dim)] = f(W_f[cut( 1,None,dim)],W_f[cut(None,-1,dim)])
+    W_f[cut( 1,None,idim)] = f(W_f[cut( 1,None,idim)],W_f[cut(None,-1,idim)])
     return W_f
 
-def compute_W_max(W, dim):
-    return compute_W_ex(W, dim, np.maximum)
+def compute_W_max(W, idim):
+    return compute_W_ex(W, idim, np.maximum)
 
-def compute_W_min(W, dim):
-    return compute_W_ex(W, dim, np.minimum)
+def compute_W_min(W, idim):
+    return compute_W_ex(W, idim, np.minimum)
 
-def first_order_derivative(U, h, dim):
-    dU = (U[cut(2,None,dim)] - U[cut(None,-2,dim)])/(h[cut(2,None,dim)] - h[cut(None,-2,dim)])
+def first_order_derivative(U, h, idim):
+    dU = (U[cut(2,None,idim)] - U[cut(None,-2,idim)])/(h[cut(2,None,idim)] - h[cut(None,-2,idim)])
     return dU
 
-def compute_min(A, Amin, dim):
-    Amin[cut(None,-1,dim)] = np.minimum(A[cut(None,-1,dim)],   A[cut(1,None,dim)])
-    Amin[cut( 1,None,dim)] = np.minimum(A[cut(None,-1,dim)],Amin[cut(1,None,dim)])
+def compute_min(A, Amin, idim):
+    Amin[cut(None,-1,idim)] = np.minimum(A[cut(None,-1,idim)],   A[cut(1,None,idim)])
+    Amin[cut( 1,None,idim)] = np.minimum(A[cut(None,-1,idim)],Amin[cut(1,None,idim)])
 
 def compute_smooth_extrema(self, U, dim):
     eps = 0
-    idim = self.dims2[dim]
+    idim = self.dims[dim]
     centers = self.centers[dim][self.shape(idim)]
     # First derivative dUdx(i) = [U(i+1)-U(i-1)]/[x_cv(i+1)-x_cv(i-1)]
     dU  = first_order_derivative( U, centers, idim)
@@ -141,7 +141,7 @@ def apply_blending(self,trouble,theta):
     b = slice( 1,None)
     cuts = [(a,a),(a,b),(b,a),(b,b)]
     #First neighbors
-    for idim in self.dims:
+    for idim in self.idims:
         theta[cut(None,-1,idim)] = np.maximum(.75*trouble[cut( 1,None,idim)],theta[cut(None,-1,idim)])
         theta[cut( 1,None,idim)] = np.maximum(.75*trouble[cut(None,-1,idim)],theta[cut( 1,None,idim)])
           
@@ -153,7 +153,7 @@ def apply_blending(self,trouble,theta):
     elif self.ndim==3:
         #Second neighbors
         for i in range(len(cuts)):
-            for idim in self.dims:
+            for idim in self.idims:
                 shape1 = tuple(np.roll(np.array((slice(None),)+cuts[ i]),-idim))
                 shape2 = tuple(np.roll(np.array((slice(None),)+cuts[::-1][-i]),-idim))
                 theta[shape1] = np.maximum(.5*trouble[shape2],theta[shape1])
@@ -164,7 +164,7 @@ def apply_blending(self,trouble,theta):
             theta[cuts1[i]] = np.maximum(.375*trouble[cuts2[i]],theta[cuts1[i]])
     
     #Last layer
-    for idim in self.dims:
+    for idim in self.idims:
         theta[cut(None,-1,idim)] = np.maximum(.25*(theta[cut( 1,None,idim)]>0),theta[cut(None,-1,idim)])
         theta[cut( 1,None,idim)] = np.maximum(.25*(theta[cut(None,-1,idim)]>0),theta[cut( 1,None,idim)])
      

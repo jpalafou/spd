@@ -33,7 +33,7 @@ class SD_Simulator(Simulator):
         
         for name in ["sp","fp","n"]:
             self.__setattr__(name,defaultdict(list))
-        for dim in self.dims2:    
+        for dim in self.dims:    
             self.__setattr__(f"{dim}_sp",sp)
             self.sp[dim] = self.__getattribute__(f"{dim}_sp")
             self.__setattr__(f"{dim}_fp",fp)
@@ -58,11 +58,11 @@ class SD_Simulator(Simulator):
     
     def compute_mesh_cv(self) -> np.ndarray:
         Nghe=self.Nghe
-        Ns = [self.N[dim]+2*Nghe for dim in self.dims2]
+        Ns = [self.N[dim]+2*Nghe for dim in self.dims]
         shape = (self.ndim,)+tuple(Ns[::-1])+(self.p+2,)*self.ndim
         mesh_cv = np.ndarray(shape)
-        for dim in self.dims2:
-            idim = self.dims2[dim]
+        for dim in self.dims:
+            idim = self.dims[dim]
             N = Ns[idim]
             h=self.h[dim]
             lenght = self.len[dim]+2*Nghe*h
@@ -116,7 +116,7 @@ class SD_Simulator(Simulator):
         #nvar,Nznz,Nyny,Nxnx
         #nvar,Nz,Ny,Nx,nz,ny,nx
         shape=[]
-        for dim in self.dims2:
+        for dim in self.dims:
             shape+=[self.n[dim],self.N[dim]]
         shape=[M.shape[0]]+shape[::-1]
         if self.ndim==1:
@@ -131,7 +131,7 @@ class SD_Simulator(Simulator):
     def array(self,px,py,pz,ngh=0,ader=False) -> np.ndarray:
         shape = [self.nvar,self.nader] if ader else [self.nvar]
         N = []
-        for dim in self.dims2:
+        for dim in self.dims:
             N.append(self.N[dim]+2*ngh)
         N = N[::-1] 
         p = [px,py,pz][:self.ndim][::-1]
@@ -156,7 +156,7 @@ class SD_Simulator(Simulator):
     def array_RS(self,dim="x",ader=False)->np.ndarray:
         shape = [self.nvar,self.nader] if ader else [self.nvar]
         N = []
-        for dim2 in self.dims2:
+        for dim2 in self.dims:
             N.append(self.N[dim2]+(dim2==dim))
         shape += N[::-1] 
         for i in range(1,self.ndim):
@@ -204,7 +204,7 @@ class SD_Simulator(Simulator):
         return self.compute_sp_from_dfp(self.dm.F_ader_fp_z,"z",ader=ader)/self.dz
     
     def integrate_faces(self,M_fp,dim,ader=True):
-        for other_dim in self.dims2:
+        for other_dim in self.dims:
             if dim != other_dim:
                 M_fp = compute_A_from_B(M_fp,self.dm.sp_to_cv,other_dim,self.ndim,ader=ader)
         return M_fp
@@ -231,7 +231,7 @@ class SD_Simulator(Simulator):
             comms.Comms_sd(self.dm,
                        M,
                        self.BC_fp,
-                       self.dims2[dim],
+                       self.dims[dim],
                        dim,
                        self.Nghc)
 

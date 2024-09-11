@@ -45,14 +45,14 @@ class Simulator:
         self.ndim = ndim
         assert len(BC) >= ndim
         self.BC = {}
+        self.idims = {}
         self.dims = {}
-        self.dims2 = {}
         
         dims = ["x","y","z"]
         for idim in range(ndim):
             dim = dims[idim]
-            self.dims[idim] = dim
-            self.dims2[dim] = idim
+            self.idims[idim] = dim
+            self.dims[dim] = idim
             self.BC[dim] = BC[idim]
             self.__setattr__(f"N{dim}",N[idim])
             
@@ -90,7 +90,7 @@ class Simulator:
         self.N = {}
         self.ngh = {}
         self.h_min = 1E10
-        for dim in self.dims2:
+        for dim in self.dims:
             self.lim[dim] = self.__getattribute__(f"{dim}lim") 
             self.__setattr__(f"{dim}len",self.lim[dim][1]-self.lim[dim][0])
             self.len[dim] = self.__getattribute__(f"{dim}len")
@@ -104,8 +104,8 @@ class Simulator:
         self.variables = [r"$\rho$"]
         self._d_ = 0
         self.vels = np.arange(ndim)+1
-        for dim in self.dims2:
-            idim = self.dims2[dim]
+        for dim in self.dims:
+            idim = self.dims[dim]
             name = f"v{dim}"
             self.variables.append(name)
             self.__setattr__(f"_{name}_",self.vels[idim])
@@ -113,7 +113,7 @@ class Simulator:
         self._p_  = self.ndim+1
         self.nvar = self.ndim+2
 
-        for dim in self.dims2:
+        for dim in self.dims:
             n=self.comms.__getattribute__(f"n{dim}")
             x=self.comms.__getattribute__(f"{dim}")
             self.N[dim] = int(self.N[dim]//n)
@@ -138,19 +138,19 @@ class Simulator:
         pass
 
     def domain_size(self):
-        return [ self.N[dim]*self.n[dim] for dim in self.dims2]
+        return [ self.N[dim]*self.n[dim] for dim in self.dims]
 
     def regular_faces(self):
         N = self.N
         n = self.n
         lim = self.lim
-        return [np.linspace(lim[dim][0],lim[dim][1],N[dim]*n[dim]+1) for dim in self.dims2]
+        return [np.linspace(lim[dim][0],lim[dim][1],N[dim]*n[dim]+1) for dim in self.dims]
 
     def regular_centers(self):
         N = self.N
         n = self.n
         lim = self.lim
-        return [np.linspace(lim[dim][0],lim[dim][1],N[dim]*n[dim]) for dim in self.dims2]
+        return [np.linspace(lim[dim][0],lim[dim][1],N[dim]*n[dim]) for dim in self.dims]
 
     def crop(self,M,ngh=1)->np.ndarray:
         return M[(slice(None),)+(slice(ngh,-ngh),)*self.ndim+(Ellipsis,)]
@@ -196,7 +196,7 @@ class Simulator:
 
     def apply_potential(self,dUdt,U,grad_phi):
         _p_ = self._p_
-        for idim in self.dims:
+        for idim in self.idims:
             vel = self.vels[idim]
             dUdt[vel,...] += U[  0]*grad_phi[idim]
             if not(self.isothermal):

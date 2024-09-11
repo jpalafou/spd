@@ -65,8 +65,8 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         self.centers = {}
         self.h_fp = {}
         self.h_cv = {}
-        for dim in self.dims2:
-            idim = self.dims2[dim]
+        for dim in self.dims:
+            idim = self.dims[dim]
             #Solution points
             sp = self.lim[dim][0] + (np.arange(self.N[dim])[:,na] + self.sp[dim][na,:])*self.h[dim]
             self.dm.__setattr__(f"{dim.upper()}_sp",sp.reshape(self.N[dim],self.n[dim]))
@@ -96,7 +96,7 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         Allocate arrays to be used in the ADER time integration
         """
         self.dm.U_ader_sp = self.array_sp(ader=True)
-        for dim in self.dims2:
+        for dim in self.dims:
             #Conservative/Primitive varibles at flux points
             self.dm.__setattr__(f"M_ader_fp_{dim}",self.array_fp(dims=dim,ader=True))
             #Conservative fluxes at flux points
@@ -113,7 +113,7 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         """
         self.dm.troubles  = self.array_FV(self.p+1,1)
         self.dm.theta = self.array_FV(self.p+1,1,ngh=self.Nghc)
-        for dim in self.dims2:
+        for dim in self.dims:
             #Conservative/Primitive varibles at flux points
             self.dm.__setattr__(f"affected_faces_{dim}",self.array_FV(self.p+1,1,dim=dim))
 
@@ -126,7 +126,7 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         names = ["M_ader_fp","F_ader_fp","MR_fp","ML_fp","BC_fp"]
         for name in names:
             self.__setattr__(name,{})
-            for dim in self.dims2:
+            for dim in self.dims:
                 self.__getattribute__(name)[dim] = self.dm.__getattribute__(f"{name}_{dim}")
 
         if self.update=="FV":
@@ -214,8 +214,8 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         na=np.newaxis
         # Interpolate M(U or W) to flux points
         # Then compute fluxes at flux points
-        for key in self.dims:
-            dim = self.dims[key]
+        for key in self.idims:
+            dim = self.idims[key]
             vels = np.roll(self.vels,-key)
             self.M_ader_fp[dim][...] = self.compute_fp_from_sp(M,dim,ader=True)
             if self.WB:
@@ -244,8 +244,8 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
     
     def add_viscosity(self,):
         dW_sp = {}
-        for dim in self.dims2:
-            idim = self.dims2[dim]
+        for dim in self.dims:
+            idim = self.dims[dim]
             #Compute gradient of primitive variables at flux points
             self.M_ader_fp[dim][...] = self.compute_primitives(self.M_ader_fp[dim])
             bc.Boundaries_sd(self,self.M_ader_fp[dim],dim)
@@ -254,10 +254,10 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
             bc.apply_interfaces(self,M,self.M_ader_fp[dim],dim)
             dW_sp[idim] = self.compute_gradient(self.M_ader_fp[dim],dim)
         dW_fp = {}
-        for dim in self.dims2:
-            idim = self.dims2[dim]
+        for dim in self.dims:
+            idim = self.dims[dim]
             vels = np.roll(self.vels,-idim)
-            for idim in self.dims:
+            for idim in self.idims:
                 #Interpolate gradients(all directions) to flux points at dim
                 dW_fp[idim] = self.compute_fp_from_sp(dW_sp[idim],dim,ader=True)
                 bc.Boundaries_sd(self,dW_fp[idim],dim)
@@ -273,7 +273,7 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
     def array_FV(self,n,nvar,dim=None,ngh=0)->np.ndarray:
         shape = [nvar] 
         N=[]
-        for dim2 in self.dims2:
+        for dim2 in self.dims:
             N.append(self.N[dim2]*n+(dim==dim2)+2*ngh)
         return np.ndarray(shape+N[::-1])
     
@@ -281,7 +281,7 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         shape = [2,self.nvar]
         ngh=self.Nghc
         N=[]
-        for dim2 in self.dims2:
+        for dim2 in self.dims:
             N.append(self.N[dim2]*self.n[dim2]+2*ngh if dim!=dim2 else ngh)
         return np.ndarray(shape+N[::-1])
 
@@ -294,7 +294,7 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         if self.WB:
             self.dm.U_eq_cv = self.transpose_to_fv(self.dm.U_eq_cv)
         
-        for dim in self.dims2:
+        for dim in self.dims:
             self.F_ader_fp[dim][...] = self.integrate_faces(self.F_ader_fp[dim],dim)
 
     def switch_to_high_order(self):
@@ -311,9 +311,9 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         ndim=self.ndim
         dims  = [(0,1,2),(0,1,3,2,4),(0,1,4,2,5,3,6)]
         dims2 = [(0),(0,1,2),(0,1,3,2,4)]
-        Nn = [self.N[dim]*self.n[dim] for dim in self.dims2][::-1]
-        for dim in self.dims2:
-            shift=self.dims2[dim]
+        Nn = [self.N[dim]*self.n[dim] for dim in self.dims][::-1]
+        for dim in self.dims:
+            shift=self.dims[dim]
             shape=[self.nvar]+Nn
             self.F_faces[dim][cut(None,-1,shift)] = np.transpose(
                 self.F_ader_fp[dim][:,i_ader][cut(None,-1,shift)],dims[ndim-1]
@@ -323,7 +323,7 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
                 self.F_ader_fp[dim][:,i_ader][indices2(-1,ndim,shift)],dims2[ndim-1]).reshape(shape)
     
     def correct_fluxes(self):
-        for dim in self.dims2:
+        for dim in self.dims:
             if self.godunov:
                 theta = 1
             else:
@@ -415,8 +415,8 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
     def init_sd_Boundaries(self) -> None:
         #This is necessary when the BCs are the ICs
         ndim=self.ndim
-        for dim in self.dims2:
-            idim = self.dims2[dim]
+        for dim in self.dims:
+            idim = self.dims[dim]
             BC = self.dm.__getattribute__(f"BC_fp_{dim}")
             M_fp = self.compute_fp_from_sp(self.dm.U_sp,dim)
             BC[0][...] =  M_fp[:,np.newaxis][indices2( 0,ndim,idim)]
@@ -426,8 +426,8 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         phi_cv = quadrature_mean(self.mesh_cv, self.init_fct, self.ndim, -1)
         phi_sp = self.compute_sp_from_cv(phi_cv[None])
         self.dm.grad_phi_sp = self.array_sp()[:self.ndim]
-        for dim in self.dims2:
-            idim = self.dims2[dim]
+        for dim in self.dims:
+            idim = self.dims[dim]
             phi_fp = self.compute_fp_from_sp(phi_sp,dim)
             self.dm.grad_phi_sp[idim] = self.crop(self.compute_sp_from_dfp(phi_fp, dim))/self.h[dim]
             # Now for the finite volume update
@@ -447,8 +447,8 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         U_sp = self.compute_conservatives(W_sp)
         self.dm.U_eq_sp = self.crop(U_sp)
         self.dm.U_eq_cv = self.compute_cv_from_sp(self.dm.U_eq_sp)
-        for dim in self.dims2:
-            idim = self.dims2[dim]
+        for dim in self.dims:
+            idim = self.dims[dim]
             vels = np.roll(self.vels,-idim)
             U = self.compute_fp_from_sp(U_sp,dim)
             self.dm.__setattr__(f"M_eq_fp_{dim}",self.crop(U))

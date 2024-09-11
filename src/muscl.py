@@ -117,13 +117,13 @@ def MUSCL_fluxes(self: Simulator,
     ----------
         F:      Fluxes given by the Riemann solver
     """
-    for dim in self.dims2:
-        shift=self.dims2[dim]
+    for dim in self.dims:
+        idim=self.dims[dim]
         
-        S = self.compute_slopes(self.dm.M_fv,shift)    
+        S = self.compute_slopes(self.dm.M_fv,idim)    
         
-        self.MR_faces[dim][...] = self.interpolate_R(self.dm.M_fv,S,shift)
-        self.ML_faces[dim][...] = self.interpolate_L(self.dm.M_fv,S,shift)
+        self.MR_faces[dim][...] = self.interpolate_R(self.dm.M_fv,S,idim)
+        self.ML_faces[dim][...] = self.interpolate_L(self.dm.M_fv,S,idim)
         self.solve_riemann_problem(dim,F[dim],prims)
     
 def compute_prediction(W: np.ndarray,
@@ -193,8 +193,8 @@ def MUSCL_Hancock_fluxes(self: Simulator,
     dMhs={}
     S={}
     crop = lambda start,end,idim : crop_fv(start,end,idim,self.ndim,1)
-    for dim in self.dims2:
-        idim=self.dims2[dim]
+    for dim in self.dims:
+        idim=self.dims[dim]
         dMh = self.compute_gradients(self.dm.M_fv,idim)
         #Compute and store slopes in a dictionary
         S[idim] = 0.5*dMh*self.h_fp[dim][cut(1,-1,idim)]
@@ -214,8 +214,8 @@ def MUSCL_Hancock_fluxes(self: Simulator,
         self.dm.M_fv -= self.dm.M_eq_fv
     self.dm.M_fv[crop(1,-1,0)] += 0.5*self.dm.dtM*dt
     
-    for dim in self.dims2:
-        idim=self.dims2[dim]
+    for dim in self.dims:
+        idim=self.dims[dim]
         self.MR_faces[dim][...] = self.interpolate_R(self.dm.M_fv,S[idim],idim)
         self.ML_faces[dim][...] = self.interpolate_L(self.dm.M_fv,S[idim],idim)
         self.solve_riemann_problem(dim,F[dim],prims)
@@ -235,19 +235,19 @@ def compute_viscosity(self: Simulator,
     """
     ngh=self.Nghc
     dW={}
-    for dim in self.dims2:
-        idim = self.dims2[dim]
+    for dim in self.dims:
+        idim = self.dims[dim]
         #Make a choice of values (here left)
         M = self.ML_faces[dim]
         h = self.h_fp[dim][cut(ngh,-ngh,idim)]
         #Compute gradient in dim at cell centers
         dW[idim] = (M[cut( 1,None,idim)]-M[cut(None,-1,idim)])/h
     dW_f = {}
-    for dim in self.dims2:
-        shift = self.dims2[dim]
+    for dim in self.dims:
+        shift = self.dims[dim]
         vels = np.roll(self.vels,-shift)
         #Interpolate gradients(all) to faces at dim
-        for idim in self.dims:
+        for idim in self.idims:
             self.fill_active_region(dW[idim])
             self.fv_Boundaries(self.dm.M_fv,all=False)    
             S = self.compute_slopes(self.dm.M_fv,shift)

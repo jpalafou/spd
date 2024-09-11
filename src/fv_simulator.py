@@ -24,7 +24,7 @@ class FV_Simulator(Simulator):
     def array_FV(self,nvar,dim=None,ngh=0)->np.ndarray:
         shape = [nvar] 
         N=[]
-        for dim2 in self.dims2:
+        for dim2 in self.dims:
             N.append(self.N[dim2]+(dim==dim2)+2*ngh)
         return np.ndarray(shape+N[::-1])
     
@@ -32,7 +32,7 @@ class FV_Simulator(Simulator):
         shape = [2,self.nvar]
         ngh=self.Nghc
         N=[]
-        for dim2 in self.dims2:
+        for dim2 in self.dims:
             N.append(self.N[dim2]+2*ngh if dim!=dim2 else ngh)
         return np.ndarray(shape+N[::-1])
     
@@ -41,7 +41,7 @@ class FV_Simulator(Simulator):
         self.dm.U_new = self.array_FV(self.p+1,self.nvar)
         if self.predictor:
             self.dm.dtM = self.array_FV(self.p+1,self.nvar,ngh=self.Nghc-1)
-        for dim in self.dims2:
+        for dim in self.dims:
             #Conservative/Primitive varibles at flux points
             self.dm.__setattr__(f"F_faces_{dim}",self.array_FV(self.p+1,self.nvar,dim=dim))
             self.dm.__setattr__(f"F_faces_FB{dim}",self.array_FV(self.p+1,self.nvar,dim=dim))
@@ -56,7 +56,7 @@ class FV_Simulator(Simulator):
         self.ML_faces = defaultdict(list)
         self.BC_fv = defaultdict(list)
         
-        for dim in self.dims2:
+        for dim in self.dims:
             self.faces[dim] = self.dm.__getattribute__(f"{dim.upper()}_fp")
             self.centers[dim] = self.dm.__getattribute__(f"{dim.upper()}_cv")
             self.h_fp[dim] = self.dm.__getattribute__(f"d{dim}_fp")
@@ -72,8 +72,8 @@ class FV_Simulator(Simulator):
                        idim: int,
                        )->np.ndarray:
         return self.slope_limiter.compute_slopes(M,
-                           self.h_cv[self.dims[idim]],
-                           self.h_fp[self.dims[idim]],
+                           self.h_cv[self.idims[idim]],
+                           self.h_fp[self.idims[idim]],
                            idim)
     
     def compute_gradients(self,
@@ -81,8 +81,8 @@ class FV_Simulator(Simulator):
                        idim: int,
                        )->np.ndarray: 
         return self.slope_limiter.compute_gradients(M,
-                             self.h_cv[self.dims[idim]],
-                             self.h_fp[self.dims[idim]],
+                             self.h_cv[self.idims[idim]],
+                             self.h_fp[self.idims[idim]],
                              idim)
 
     def interpolate_R(self,
@@ -145,7 +145,7 @@ class FV_Simulator(Simulator):
         overwrites:
             F: Fluxes given by the Riemann solver
         """
-        idim=self.dims2[dim]
+        idim=self.dims[dim]
         vels = np.roll(self.vels,-idim)
         if self.WB:
             #Move to solution at interfaces
@@ -188,10 +188,10 @@ class FV_Simulator(Simulator):
 
     def fv_apply_fluxes(self,dt):
         dUdt = self.dm.U_cv.copy()*0
-        for dim in self.dims2:
+        for dim in self.dims:
             ndim = self.ndim
             ngh = self.ngh[dim]
-            shift=self.dims2[dim]
+            shift=self.dims[dim]
             dx = self.faces[dim][ngh+1:-ngh] - self.faces[dim][ngh:-(ngh+1)]
             dx = dx[(None,)*(ndim-shift)+(slice(None),)+(None,)*(shift)]
             dUdt += (self.F_faces[dim][cut(1,None,shift)]
@@ -215,8 +215,8 @@ class FV_Simulator(Simulator):
         n = self.p+1
         if n>2:
             M = M[crop_fv(n-ngh,-(n-ngh),0,self.ndim,n-ngh)]
-        for dim in self.dims2:
-            idim = self.dims2[dim]
+        for dim in self.dims:
+            idim = self.dims[dim]
             BC_fv = self.dm.__getattribute__(f"BC_fv_{dim}")
             BC_fv[0][...] = M[cut(None, ngh,idim)]
             BC_fv[1][...] = M[cut(-ngh,None,idim)]
@@ -229,7 +229,7 @@ class FV_Simulator(Simulator):
         Stores the solution of ngh layers in the active region
         """    
         na=np.newaxis
-        idim = self.dims2[dim]
+        idim = self.dims[dim]
         ngh=self.Nghc
         BC = self.BC[dim]
         cuts=(cut(-2*ngh,  -ngh,idim),
@@ -257,14 +257,14 @@ class FV_Simulator(Simulator):
         Fills ghost cells in M_fv
         """
         ngh=self.Nghc
-        idim = self.dims2[dim]
+        idim = self.dims[dim]
         self.dm.M_fv[cut(None, ngh,idim)] = self.BC_fv[dim][0]
         self.dm.M_fv[cut(-ngh,None,idim)] = self.BC_fv[dim][1]
 
     def fv_Boundaries(self,
                       M: np.ndarray,
                       all=True):
-        for dim in self.dims2:
+        for dim in self.dims:
             self.fv_store_BC(M,dim,all)
             self.Comms_fv(M,dim)
             self.fv_apply_BC(dim)
@@ -276,7 +276,7 @@ class FV_Simulator(Simulator):
         comms.Comms_fv(self.dm,
                        M,
                        self.BC_fv,
-                       self.dims2[dim],
+                       self.dims[dim],
                        dim,
                        self.Nghc)
       
