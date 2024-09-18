@@ -237,17 +237,20 @@ class FV_Simulator(Simulator):
         for side in [0,1]:
             if  BC[side] == "periodic":
                 self.BC_fv[dim][side] = M[cuts[side]]
-            elif BC[side] == "reflective" and all:
-                self.BC_fv[dim][side] = M[cuts[1-side]]
-                self.BC_fv[dim][side][self.vels[idim]] *= -1
-            elif BC[side] == "gradfree" and all:
-                self.BC_fv[dim][side] = M[cuts[1-side]]
+            elif BC[side] == "reflective":
+                if all:
+                    self.BC_fv[dim][side] = M[cuts[1-side]]
+                    self.BC_fv[dim][side][self.vels[idim]] *= -1
+            elif BC[side] == "gradfree":
+                if all:
+                    self.BC_fv[dim][side] = M[cuts[1-side]]
             elif BC[side] == "ic":
                 next
             elif BC[side] == "pressure":
                 next
-            elif BC[side] == "eq" and all:
-                self.BC_fv[dim][side][...] = 0
+            elif BC[side] == "eq":
+                if all:
+                    self.BC_fv[dim][side][...] = 0
             else:
                 raise("Undetermined boundary type")
                          
