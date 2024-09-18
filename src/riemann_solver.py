@@ -144,7 +144,7 @@ class Riemann_solver:
             F[vel,...] = F[_d_]*np.where(v_star>0,W_L[vel],W_R[vel])
         return F
 
-    def solve_riemann_lhllc(
+    def lhllc(
         self,
         W_L: np.ndarray,
         W_R: np.ndarray,
