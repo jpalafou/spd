@@ -92,6 +92,8 @@ class SD_Simulator(Simulator):
     def regular_mesh(self,W):
         #Interpolate to a regular mesh
         p=self.p
+        if p<=1:
+            return W
         x = np.arange(p+2)/(p+1)
         x = .5*(x[1:]+x[:-1])
         x_sp = solution_points(0.0, 1.0, p)
@@ -212,9 +214,9 @@ class SD_Simulator(Simulator):
     def compute_dt(self) -> None:
         W = self.dm.W_cv
         c_s = hydro.compute_cs(W[self._p_],W[self._d_],self.gamma,self.min_c2)
-        c = np.abs(W[self._vx_])+c_s
-        for vel in self.vels[1:]:
-            c += np.abs(W[vel])+c_s
+        c = c_s*self.ndim
+        for vel in self.vels:
+            c += np.abs(W[vel])
         c_max = np.max(c)
         h = self.h_min/(self.p + 1) 
         dt = h/c_max 
