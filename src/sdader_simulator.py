@@ -452,8 +452,9 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
             vels = np.roll(self.vels,-idim)
             U = self.compute_fp_from_sp(U_sp,dim)
             self.dm.__setattr__(f"M_eq_fp_{dim}",self.crop(U))
+            M_fp = self.dm.__getattribute__(f"M_eq_fp_{dim}")
             #We force the equilibrium values at flux points to match between elements
-            #Pending
+            M_fp[cut( 1, None, idim+self.ndim)][indices(0,idim)] = M_fp[cut(None, -1, idim+self.ndim)][indices(-1,idim)]
             F = U.copy()
             W = self.compute_primitives(U)
             self.compute_fluxes(F,W,vels,prims=True)
