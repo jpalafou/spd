@@ -58,6 +58,9 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         if self.WB:
             self.init_equilibrium_state()
 
+        # configure timer
+        self.timer.add_cat(["(sd) riemann solver", "(fallback scheme)"])
+
     def compute_positions(self):
         na = np.newaxis
         ngh=self.Nghc
@@ -223,6 +226,7 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
                 self.M_ader_fp[dim]+=self.dm.__getattribute__(f"M_eq_fp_{dim}")[:,na]
             self.compute_fluxes(self.F_ader_fp[dim], self.M_ader_fp[dim],vels,prims)
             bc.Boundaries_sd(self,self.M_ader_fp[dim],dim)
+            self.timer.start("(sd) riemann solver")
             F = self.riemann_solver_sd(self.ML_fp[dim],
                                        self.MR_fp[dim],
                                        vels,
@@ -231,6 +235,7 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
                                        self.min_c2,
                                        prims,
                                        isothermal=self.isothermal)
+            self.timer.stop("(sd) riemann solver")
             bc.apply_interfaces(self,F,self.F_ader_fp[dim],dim)
             if self.WB:
                 #F->F'
@@ -339,11 +344,13 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
             #Compute candidate solution
             self.fv_apply_fluxes(dt)
             if self.FB:
+                self.timer.start("(fallback scheme)")
                 detect_troubles(self)
                 self.compute_fv_fluxes(dt)
                 self.correct_fluxes()
                 #Compute corrected solution
                 self.fv_apply_fluxes(dt)
+                self.timer.stop("(fallback scheme)")
             #Update solution
             self.dm.U_cv[...] = self.dm.U_new
         self.switch_to_high_order()
@@ -380,16 +387,16 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
     def init_sim(self):
         self.dm.switch_to(CupyLocation.device)
         self.create_dicts()
-        self.execution_time = -timer() 
+        self.timer.start("TOTAL") 
 
     def end_sim(self):
         self.dm.switch_to(CupyLocation.host)
-        self.execution_time += timer() 
+        self.timer.stop("TOTAL") 
         self.create_dicts()
         self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp)
         self.dm.W_cv[...] = self.compute_primitives(self.dm.U_cv)
         if self.rank==0:
-            print(f"t={self.time}, steps taken {self.n_step}, time taken {self.execution_time}")
+            print(f"t={self.time}, steps taken {self.n_step}, time taken {self.timer.cum_time['TOTAL']}s")
 
     def perform_iterations(self, n_step: int) -> None:
         self.init_sim()

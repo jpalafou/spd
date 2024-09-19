@@ -1,3 +1,4 @@
+from fvhoe.timer import Timer
 import numpy as np
 from itertools import repeat
 from collections import defaultdict
@@ -20,6 +21,9 @@ class FV_Simulator(Simulator):
         self.predictor = predictor
         self.slope_limiter = muscl.Slope_limiter(slope_limiter)
         self.fv_scheme = muscl.MUSCL_Hancock_fluxes if predictor else muscl.MUSCL_fluxes
+
+        # add timer
+        self.timer = Timer(["TOTAL", "(fv) riemann solver"])
 
     def array_FV(self,nvar,dim=None,ngh=0)->np.ndarray:
         shape = [nvar] 
@@ -152,6 +156,7 @@ class FV_Simulator(Simulator):
             M_eq_faces = self.dm.__getattribute__(f"M_eq_faces_{dim}")
             self.MR_faces[dim][...] += M_eq_faces
             self.ML_faces[dim][...] += M_eq_faces
+        self.timer.start("(fv) riemann solver")
         F[...] = self.riemann_solver_fv(self.ML_faces[dim],
                                         self.MR_faces[dim],
                                         vels,
@@ -160,6 +165,7 @@ class FV_Simulator(Simulator):
                                         self.min_c2,
                                         prims,
                                         isothermal=self.isothermal)
+        self.timer.stop("(fv) riemann solver")
         if self.WB:
             #We compute the perturbation over the flux for conservative variables
             F -= self.dm.__getattribute__(f"F_eq_faces_{dim}")
