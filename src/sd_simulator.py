@@ -92,6 +92,8 @@ class SD_Simulator(Simulator):
     def regular_mesh(self,W):
         #Interpolate to a regular mesh
         p=self.p
+        if p<=1:
+            return W
         x = np.arange(p+2)/(p+1)
         x = .5*(x[1:]+x[:-1])
         x_sp = solution_points(0.0, 1.0, p)
