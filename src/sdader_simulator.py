@@ -59,7 +59,7 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
             self.init_equilibrium_state()
 
         # configure timer
-        self.timer.add_cat(["(sd) riemann solver", "(fallback scheme)"])
+        self.timer.add_cat(["(sd) riemann solver", "(fallback scheme)", "(sd) interpolate"])
 
     def compute_positions(self):
         na = np.newaxis
@@ -220,7 +220,9 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         for key in self.idims:
             dim = self.idims[key]
             vels = np.roll(self.vels,-key)
+            self.timer.start("(sd) interpolate")
             self.M_ader_fp[dim][...] = self.compute_fp_from_sp(M,dim,ader=True)
+            self.timer.stop("(sd) interpolate")
             if self.WB:
                 #U'->U
                 self.M_ader_fp[dim]+=self.dm.__getattribute__(f"M_eq_fp_{dim}")[:,na]
@@ -390,8 +392,8 @@ class SDADER_Simulator(SD_Simulator,FV_Simulator):
         self.timer.start("TOTAL") 
 
     def end_sim(self):
-        self.dm.switch_to(CupyLocation.host)
-        self.timer.stop("TOTAL") 
+        self.timer.stop("TOTAL")
+        self.dm.switch_to(CupyLocation.host) 
         self.create_dicts()
         self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp)
         self.dm.W_cv[...] = self.compute_primitives(self.dm.U_cv)

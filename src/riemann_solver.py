@@ -60,7 +60,7 @@ class Riemann_solver:
         c_L = hydro.compute_cs(W_L[_p_],W_L[_d_],gamma,min_c2) + np.abs(W_L[v_1])
         c_R = hydro.compute_cs(W_R[_p_],W_R[_d_],gamma,min_c2) + np.abs(W_R[v_1])
 
-        c_max = np.where(c_L>c_R,c_L,c_R)[np.newaxis,...]
+        c_max = np.maximum(c_L, c_R)
 
         return 0.5*(F_R+F_L)-0.5*c_max*(U_R-U_L)
 
