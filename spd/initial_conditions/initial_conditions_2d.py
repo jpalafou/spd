@@ -153,3 +153,49 @@ def KH_instability(xy: np.ndarray, case: int) -> np.ndarray:
         return 2.5*np.ones(y.shape)
     else:
         return np.zeros(xy[0].shape)
+
+
+def gresho_vortex(
+    xy: np.ndarray, case: int, gamma=5 / 3, M_max=0.1, v0=0.0
+) -> np.ndarray:
+    """Gresho vortex initial condition on ``[0, 1] x [0, 1]``."""
+    x = xy[0]
+    y = xy[1]
+
+    xc = x - 0.5
+    yc = y - 0.5
+    r = np.sqrt(xc**2 + yc**2)
+
+    zone1 = r < 0.2
+    zone2 = np.logical_and(r >= 0.2, r < 0.4)
+    zone3 = r >= 0.4
+
+    v_phi = np.zeros(x.shape)
+    v_phi[zone1] = 5.0 * r[zone1]
+    v_phi[zone2] = 2.0 - 5.0 * r[zone2]
+
+    inv_r = np.divide(1.0, r, out=np.zeros(x.shape), where=r != 0.0)
+    vx = -v_phi * yc * inv_r + v0
+    vy = v_phi * xc * inv_r
+
+    P = np.empty(x.shape)
+    P[zone1] = (25 / 2) * r[zone1] ** 2
+    P[zone2] = (
+        4 * np.log(5 * r[zone2])
+        + 4
+        - 20 * r[zone2]
+        + (25 / 2) * r[zone2] ** 2
+    )
+    P[zone3] = 4 * np.log(2) - 2.0
+    P = (1 / (gamma * M_max**2)) - 0.5 + P
+
+    if case == 0:
+        return np.ones(x.shape)
+    elif case == 1:
+        return vx
+    elif case == 2:
+        return vy
+    elif case == 4:
+        return P
+    else:
+        return np.zeros(x.shape)
