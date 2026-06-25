@@ -92,7 +92,8 @@ class Simulator:
         self.time_integrator = time_integrator
         self.integrator = None
         self.scheme = None  # Set by subclass or factory
-        self.execution_time = 0.0
+        self.execution_times = {"total": 0.0, "riemann_solver_sd": 0.0}
+        self.ncalls = {"riemann_solver_sd": 0}
         ndim = len(N)
         self.ndim = ndim
         assert len(BC) >= ndim
@@ -434,10 +435,10 @@ class Simulator:
         self.checkpoint = False
         self.switch_to_device()
         self.create_dicts()
-        self.execution_time = -timer()
+        self.execution_times["total"] = -timer()
 
     def end_sim(self):
-        self.execution_time += timer()
+        self.execution_times["total"] += timer()
         # Convert while arrays are still on the device: the host-side
         # conversion (numpy einsum) is orders of magnitude slower.
         self.convert_solution()
@@ -446,16 +447,16 @@ class Simulator:
         if self.rank == 0:
             print(
                 f"t={self.time}, steps taken {self.n_step}, "
-                f"time taken {np.round(self.execution_time,3)}, bzcps = {np.round(self.zone_cycles/1E+9,3)}"
+                f"time taken {np.round(self.execution_times["total"],3)}, bzcps = {np.round(self.zone_cycles/1E+9,3)}"
             )
 
     @property
     def elapsed_time(self):
-        return self.execution_time - timer()
+        return self.execution_times["total"] - timer()
 
     @property
     def cost_per_step(self):
-        cost = 0 if self.n_step == 0 else self.execution_time / self.n_step
+        cost = 0 if self.n_step == 0 else self.execution_times["total"] / self.n_step
         return cost
 
     @property

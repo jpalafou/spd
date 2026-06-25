@@ -7,6 +7,8 @@ Computes the spatial operator L(U) = -div(F) for the method-of-lines
 formulation dU/dt = L(U).
 """
 
+from timeit import default_timer as timer
+
 import numpy as np
 
 from spd.schemes.scheme import SemiDiscreteScheme
@@ -485,6 +487,7 @@ class SD_Scheme(SemiDiscreteScheme):
             bc.Boundaries(self, self.M_fp[dim], dim)
             self.compute_fluxes(self.F_fp[dim], self.M_fp[dim], vels, prims)
             bc.store_interfaces(self, self.M_fp[dim], dim)
+            start = timer() 
             F = self.riemann_solver(
                 self.ML_fp[dim],
                 self.MR_fp[dim],
@@ -498,6 +501,8 @@ class SD_Scheme(SemiDiscreteScheme):
                 thdiffusion=self.thdiffusion,
                 _t_=self._t_,
             )
+            self.execution_times["riemann_solver_sd"] += timer() - start
+            self.ncalls["riemann_solver_sd"] += 1
             bc.apply_interfaces(self, F, self.F_fp[dim], dim)
             if self.WB:
                 # F -> F'
