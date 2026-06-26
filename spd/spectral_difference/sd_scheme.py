@@ -7,6 +7,7 @@ Computes the spatial operator L(U) = -div(F) for the method-of-lines
 formulation dU/dt = L(U).
 """
 
+from functools import lru_cache
 from timeit import default_timer as timer
 
 import numpy as np
@@ -29,6 +30,36 @@ from spd.numerics.transforms import (
 from spd.numerics.slicing import cut, indices, indices2
 from spd.spectral_difference import sd_boundary as bc
 from spd.numerics.polynomials import gauss_legendre_quadrature, flux_points, solution_points 
+
+_SUPERFV_DIM_FROM_VEL = {1: "x", 2: "y", 3: "z"}
+
+
+@lru_cache(maxsize=1)
+def _superfv_hllc_kernel():
+    from superfv.riemann_solvers import RiemannSolver, solve_riemann_problem
+    from superfv.tools.variable_index_map import VariableIndexMap
+
+    idx = VariableIndexMap(
+        {
+            "rho": 0,
+            "vx": 1,
+            "vy": 2,
+            "vz": 3,
+            "P": 4,
+            "mx": 1,
+            "my": 2,
+            "mz": 3,
+            "E": 4,
+        },
+        group_var_map={
+            "v": ["vx", "vy", "vz"],
+            "m": ["mx", "my", "mz"],
+            "primitives": ["rho", "v", "P"],
+            "conservatives": ["rho", "m", "E"],
+        },
+    )
+    return RiemannSolver.HLLC, solve_riemann_problem, idx
+
 
 class SD_Scheme(SemiDiscreteScheme):
     """
@@ -63,7 +94,10 @@ class SD_Scheme(SemiDiscreteScheme):
         self.centers = {}
         self.h_fp = {}
         self.h_cv = {}
-        self.riemann_solver = rs1d(riemann_solver, soe).solver
+        if soe == "hydro" and riemann_solver == "hllc":
+            self.riemann_solver = self._superfv_hllc
+        else:
+            self.riemann_solver = rs1d(riemann_solver, soe).solver
 
         # Lagrange matrices for interpolation between bases
         self.dm.sp_to_fp = lagrange_matrix(self.fp["x"], self.sp["x"])
@@ -75,6 +109,33 @@ class SD_Scheme(SemiDiscreteScheme):
         self.dm.fp_to_cv = intfromsol_matrix(self.fp["x"], self.fp["x"])
         self.dm.cv_to_sp = np.linalg.inv(self.dm.sp_to_cv)
         self.scheme = "FE_SD"
+
+    def _superfv_hllc(
+        self,
+        M_L: np.ndarray,
+        M_R: np.ndarray,
+        F: np.ndarray,
+        vels: np.array,
+        _p_: int,
+        gamma: float,
+        min_c2: float,
+        prims: bool,
+        **kwargs,
+    ) -> np.ndarray:
+        del _p_, min_c2
+
+        if kwargs.get("npassive", self.npassive) != 0:
+            raise NotImplementedError("SuperFV HLLC adapter assumes npassive=0.")
+
+        riemann_solver, solve_riemann_problem, idx = _superfv_hllc_kernel()
+        dim = _SUPERFV_DIM_FROM_VEL[int(vels[0])]
+        W_L = M_L if prims else self.compute_primitives(M_L)
+        W_R = M_R if prims else self.compute_primitives(M_R)
+        if W_R is F:
+            W_R = W_R.copy()
+
+        solve_riemann_problem(W_L, W_R, F, riemann_solver, dim, idx, gamma)
+        return F
 
     # ----------------------------------------------------------------
     # Initialization
