@@ -34,8 +34,8 @@ from spd.numerics.polynomials import gauss_legendre_quadrature, flux_points, sol
 _SUPERFV_DIM_FROM_VEL = {1: "x", 2: "y", 3: "z"}
 
 
-@lru_cache(maxsize=1)
-def _superfv_hllc_kernel():
+@lru_cache(maxsize=2)
+def _superfv_riemann_kernel(solver_name):
     from superfv.riemann_solvers import RiemannSolver, solve_riemann_problem
     from superfv.tools.variable_index_map import VariableIndexMap
 
@@ -58,7 +58,11 @@ def _superfv_hllc_kernel():
             "conservatives": ["rho", "m", "E"],
         },
     )
-    return RiemannSolver.HLLC, solve_riemann_problem, idx
+    solver = {
+        "hllc": RiemannSolver.HLLC,
+        "llf": RiemannSolver.LLF,
+    }[solver_name]
+    return solver, solve_riemann_problem, idx
 
 
 class SD_Scheme(SemiDiscreteScheme):
@@ -94,8 +98,9 @@ class SD_Scheme(SemiDiscreteScheme):
         self.centers = {}
         self.h_fp = {}
         self.h_cv = {}
-        if soe == "hydro" and riemann_solver == "hllc":
-            self.riemann_solver = self._superfv_hllc
+        if soe == "hydro" and riemann_solver in ("hllc", "llf"):
+            self._superfv_solver_name = riemann_solver
+            self.riemann_solver = self._superfv_riemann
         else:
             self.riemann_solver = rs1d(riemann_solver, soe).solver
 
@@ -110,7 +115,7 @@ class SD_Scheme(SemiDiscreteScheme):
         self.dm.cv_to_sp = np.linalg.inv(self.dm.sp_to_cv)
         self.scheme = "FE_SD"
 
-    def _superfv_hllc(
+    def _superfv_riemann(
         self,
         M_L: np.ndarray,
         M_R: np.ndarray,
@@ -125,9 +130,11 @@ class SD_Scheme(SemiDiscreteScheme):
         del _p_, min_c2
 
         if kwargs.get("npassive", self.npassive) != 0:
-            raise NotImplementedError("SuperFV HLLC adapter assumes npassive=0.")
+            raise NotImplementedError("SuperFV Riemann adapter assumes npassive=0.")
 
-        riemann_solver, solve_riemann_problem, idx = _superfv_hllc_kernel()
+        riemann_solver, solve_riemann_problem, idx = _superfv_riemann_kernel(
+            self._superfv_solver_name
+        )
         dim = _SUPERFV_DIM_FROM_VEL[int(vels[0])]
         W_L = M_L if prims else self.compute_primitives(M_L)
         W_R = M_R if prims else self.compute_primitives(M_R)
