@@ -30,6 +30,10 @@ from spd.numerics.transforms import (
 from spd.numerics.slicing import cut, indices, indices2
 from spd.spectral_difference import sd_boundary as bc
 from spd.numerics.polynomials import gauss_legendre_quadrature, flux_points, solution_points 
+from spd.runtime.data_management import CUPY_AVAILABLE
+
+if CUPY_AVAILABLE:
+    import cupy as cp
 
 _SUPERFV_DIM_FROM_VEL = {1: "x", 2: "y", 3: "z"}
 
@@ -141,9 +145,16 @@ class SD_Scheme(SemiDiscreteScheme):
         if W_R is F:
             W_R = W_R.copy()
 
+        if self.use_cupy:
+            cp.cuda.Device().synchronize()
         start = timer()
+        
         solve_riemann_problem(W_L, W_R, F, riemann_solver, dim, idx, gamma)
+
+        if self.use_cupy:
+            cp.cuda.Device().synchronize()
         self.execution_times["riemann_solver_sd"] += timer() - start
+
         return F
 
     # ----------------------------------------------------------------
