@@ -137,7 +137,7 @@ def compute_viscous_fluxes(
     F[_p_] = W[v1] * F[v1]
     for vel in vels[1:]:
         idim = vel - 1
-        dW = dWs[idim]
+        dW = dWs[idim] if idim in dWs else np.zeros_like(dW1)
         F[v1] -= beta * dW[vel]
         F[vel] = dW1[vel] + dW[v1]
         F[_p_] += W[vel] * F[vel]
