@@ -125,8 +125,11 @@ class SPD_Simulator(Simulator):
             for dim in self.dims:
                 self.n[dim] = 1
                 setattr(self, f"n{dim}", 1)
-            self.ho_scheme = FV_Scheme(self, riemann_solver=riemann_solver_fv)
-            self.cfl_coeff /= self.p + 1
+            self.ho_scheme = FV_Scheme(
+                self,
+                riemann_solver=riemann_solver_fv,
+                slope_limiter=slope_limiter,
+            )
         else:
             raise ValueError(f"Invalid scheme: {scheme}")
 

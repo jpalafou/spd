@@ -545,33 +545,114 @@ class FV_Scheme(SemiDiscreteScheme):
             self.compute_nabla_terms(F)
 
 
+    def compute_second_order_viscous_fluxes(self, W, dWs, normal):
+        """Return the centered face viscous flux used by SuperFV for p=1.
+
+        The component-wise form is kept deliberately: changing the arithmetic
+        order is enough for the MUSCL limiter to amplify roundoff differences
+        on later steps.
+        """
+        xp = self.dm.xp
+        out = xp.zeros_like(W)
+        zero = xp.zeros_like(W[self._d_])
+        vx, vy, vz = self.vels
+
+        def derivative(dim, vel):
+            return dWs[dim][vel] if dim in dWs else zero
+
+        minus_nu_rho = -self.nu * W[self._d_]
+        if normal == 0:
+            Pi11 = 4 * derivative(0, vx) - 2 * derivative(1, vy) - 2 * derivative(2, vz)
+            Pi11 *= minus_nu_rho / 3
+            Pi12 = minus_nu_rho * (derivative(0, vy) + derivative(1, vx))
+            Pi13 = minus_nu_rho * (derivative(0, vz) + derivative(2, vx))
+            out[vx] = Pi11
+            out[vy] = Pi12
+            out[vz] = Pi13
+            out[self._p_] = W[vx] * Pi11 + W[vy] * Pi12 + W[vz] * Pi13
+        elif normal == 1:
+            Pi22 = -2 * derivative(0, vx) + 4 * derivative(1, vy) - 2 * derivative(2, vz)
+            Pi22 *= minus_nu_rho / 3
+            Pi12 = minus_nu_rho * (derivative(0, vy) + derivative(1, vx))
+            Pi23 = minus_nu_rho * (derivative(1, vz) + derivative(2, vy))
+            out[vx] = Pi12
+            out[vy] = Pi22
+            out[vz] = Pi23
+            out[self._p_] = W[vx] * Pi12 + W[vy] * Pi22 + W[vz] * Pi23
+        elif normal == 2:
+            Pi33 = -2 * derivative(0, vx) - 2 * derivative(1, vy) + 4 * derivative(2, vz)
+            Pi33 *= minus_nu_rho / 3
+            Pi13 = minus_nu_rho * (derivative(0, vz) + derivative(2, vx))
+            Pi23 = minus_nu_rho * (derivative(1, vz) + derivative(2, vy))
+            out[vx] = Pi13
+            out[vy] = Pi23
+            out[vz] = Pi33
+            out[self._p_] = W[vx] * Pi13 + W[vy] * Pi23 + W[vz] * Pi33
+        return out
+
+
     def compute_nabla_terms(self,F: dict):
-        ngh=self.Nghc
-        dW={}
-        for dim in self.dims:
-            idim = self.dims[dim]
-            #Make a choice of values (here left)
-            M = self.ML_fp[dim]
-            h = self.h_fp[dim][cut(ngh,-ngh,idim)]
-            #Compute gradient in dim at cell centers
-            dW[idim] = (M[cut( 1,None,idim)]-M[cut(None,-1,idim)])/h
-        dW_f = {}
+        """Add centered, second-order viscous fluxes at cell faces."""
+        ngh = self.Nghc
+
+        # Viscosity uses the cell-centered state before the Hancock predictor.
+        self.dm.M[...] = 0
+        self.fill_active_region(self.W_cv)
+        self.Boundaries(self.dm.M)
+
+        def cell_view(normal_dim, side, transverse_dim=None, offset=0):
+            """View cells beside a face, optionally shifted transversely."""
+            slices = [slice(None)] * self.dm.M.ndim
+            for dim, idim in self.dims.items():
+                axis = self.dm.M.ndim - 1 - idim
+                if dim == normal_dim:
+                    slices[axis] = (
+                        slice(ngh - 1, -ngh)
+                        if side == "left"
+                        else slice(ngh, 1 - ngh)
+                    )
+                elif dim == transverse_dim:
+                    stop = -ngh + offset
+                    slices[axis] = slice(ngh + offset, stop or None)
+                else:
+                    slices[axis] = slice(ngh, -ngh)
+            return self.dm.M[tuple(slices)]
+
         for dim in self.dims:
             shift = self.dims[dim]
-            vels = np.roll(self.vels,-shift)
-            #Interpolate gradients(all) to faces at dim
-            idims = self.idims if self.viscosity else [idim]
-            for idim in idims:
-                self.fill_active_region(dW[idim])
-                self.Boundaries(self.dm.M,all=False)    
-                S = self.compute_slopes(self.dm.M,shift)
-                #Counter the previous choice of values (now right)
-                dW_f[idim] = self.interpolate_R(self.dm.M,S,shift)
-            #Add viscous flux
-            F[dim][...] -= self.compute_viscous_fluxes(self.ML_fp[dim],dW_f,vels,prims=True)
+            h = self.len[dim] / (self.N[dim] * self.n[dim])
+            left = cell_view(dim, "left")
+            right = cell_view(dim, "right")
+            W_f = 0.5 * (left + right)
+            dW_f = {shift: (right - left) / h}
+
+            for transverse_dim in self.dims:
+                transverse_shift = self.dims[transverse_dim]
+                if transverse_dim == dim:
+                    continue
+                h_transverse = self.len[transverse_dim] / (
+                    self.N[transverse_dim] * self.n[transverse_dim]
+                )
+                W_plus = 0.5 * (
+                    cell_view(dim, "left", transverse_dim, 1)
+                    + cell_view(dim, "right", transverse_dim, 1)
+                )
+                W_minus = 0.5 * (
+                    cell_view(dim, "left", transverse_dim, -1)
+                    + cell_view(dim, "right", transverse_dim, -1)
+                )
+                dW_f[transverse_shift] = (
+                    W_plus - W_minus
+                ) / (2 * h_transverse)
+
+            if self.viscosity:
+                F[dim][...] += self.compute_second_order_viscous_fluxes(
+                    W_f, dW_f, shift
+                )
             if self.thdiffusion:
-                #Add thermal flux
-                F[dim][self._p_] -= self.compute_thermal_fluxes(self.ML_fp[dim],dW_f[self.dims[dim]],prims=True)
+                F[dim][self._p_] -= self.compute_thermal_fluxes(
+                    W_f, dW_f[shift], prims=True
+                )
 
     def compute_dudt(self, U, ader=False) -> np.ndarray:
         """Compute dU/dt from face fluxes."""
