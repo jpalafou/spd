@@ -588,7 +588,7 @@ class SD_Scheme(SemiDiscreteScheme):
                 self.F_fp[dim] -= self.dm.__getattribute__(f"F_eq_fp_{dim}")[:, na]
 
         if self.viscosity or self.thdiffusion:
-            self.add_nabla_terms()
+            self.add_nabla_terms(ader=ader)
 
     def add_nabla_terms(self, ader=True):
         """Add viscous and thermal diffusion fluxes."""
