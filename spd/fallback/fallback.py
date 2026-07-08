@@ -297,6 +297,17 @@ class FallbackScheme(FV_Scheme):
         if self.WB and self.primary is not None:
             self.dm.U_eq_cv = dm.U_eq_cv
 
+    def _start_mood_subtimer(self):
+        if CUPY_AVAILABLE and self.use_cupy:
+            cp.cuda.Device().synchronize()
+        return timer()
+
+    def _stop_mood_subtimer(self, cat, start):
+        if CUPY_AVAILABLE and self.use_cupy:
+            cp.cuda.Device().synchronize()
+        self.execution_times[cat] += timer() - start
+        self.ncalls[cat] += 1
+
     # ----------------------------------------------------------------
     # Trouble detection
     # ----------------------------------------------------------------
@@ -306,7 +317,9 @@ class FallbackScheme(FV_Scheme):
         Detect troubled cells using NAD/PAD criteria.
         Delegates to the trouble_detection module.
         """
+        start = self._start_mood_subtimer()
         detect_troubles(self)
+        self._stop_mood_subtimer("detect_troubles", start)
 
     # ----------------------------------------------------------------
     # Flux blending
@@ -365,14 +378,20 @@ class FallbackScheme(FV_Scheme):
         3. Compute MUSCL fluxes into F_fp_FB (not overwriting F_fp/HO).
         4. Blend F_fp (HO) and F_fp_FB (MUSCL) based on trouble indicators.
         """
+        start = self._start_mood_subtimer()
         self.W_cv[...] = self.primary.compute_primitives_cv(self.U_cv)
         # Tentative HO update for trouble detection; F_fp still holds HO fluxes
         self.apply_fluxes(dt)
+        self._stop_mood_subtimer("compute_candidate_solution", start)
         self.detect_troubles()
         # Redirect compute_fluxes output to F_fp_FB so HO fluxes in F_fp survive
+        start = self._start_mood_subtimer()
         self.compute_fluxes(self.F_fp_FB, dt)
+        self._stop_mood_subtimer("compute_fallback_fluxes", start)
         # Blend: F_fp = HO, F_fp_FB = MUSCL
+        start = self._start_mood_subtimer()
         self.correct_fluxes()
+        self._stop_mood_subtimer("update_fluxes", start)
 
     # ----------------------------------------------------------------
     # Solution state delegation to primary (for RK integrator)

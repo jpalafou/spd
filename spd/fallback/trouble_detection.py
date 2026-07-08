@@ -216,6 +216,7 @@ def detect_troubles(self: Simulator):
     # First check if DMP criteria is met, if it is we can avoid computing alpha
     # The NAD/SED pipeline only feeds the trouble flag through the limiting
     # variables, so restrict the (expensive) neighborhood work to those rows.
+    start = self._start_mood_subtimer()
     self.Boundaries(self.dm.M)
     W_max, W_min = neighborhood_extrema(
         self.dm.M[lv], self.ndim, getattr(self, "NAD_neighbors", "1st")
@@ -244,6 +245,7 @@ def detect_troubles(self: Simulator):
     possible_trouble = nad_check(
         W_new_lv, W_min, W_max, alpha, tolerance, self.NAD == "delta"
     )
+    self._stop_mood_subtimer("NAD", start)
 
     self.dm.troubles[...] = np.amax(possible_trouble,axis=0)
     
