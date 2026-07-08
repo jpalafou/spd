@@ -92,8 +92,12 @@ class Simulator:
         self.time_integrator = time_integrator
         self.integrator = None
         self.scheme = None  # Set by subclass or factory
-        self.execution_times = {"total": 0.0, "riemann_solver_sd": 0.0}
-        self.ncalls = {"riemann_solver_sd": 0}
+        self.execution_times = {
+            "total": 0.0,
+            "riemann_solver_sd": 0.0,
+            "mood_loop": 0.0,
+        }
+        self.ncalls = {"riemann_solver_sd": 0, "mood_loop": 0}
         ndim = len(N)
         self.ndim = ndim
         assert len(BC) >= ndim

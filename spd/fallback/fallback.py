@@ -10,6 +10,8 @@ Can operate in two modes:
      stability near discontinuities.
 """
 
+from timeit import default_timer as timer
+
 import numpy as np
 
 from spd.schemes.scheme import SemiDiscreteScheme
@@ -426,7 +428,14 @@ class FallbackScheme(FV_Scheme):
         self.primary.switch_to_finite_volume(U_sp=U)
         self.working_arrays()
         self.store_high_order_fluxes(0, ader=ader)
+        if self.use_cupy:
+            cp.cuda.Device().synchronize()
+        start = timer()
         self.compute_corrected_fluxes(self.dt)
+        if self.use_cupy:
+            cp.cuda.Device().synchronize()
+        self.execution_times["mood_loop"] += timer() - start
+        self.ncalls["mood_loop"] += 1
         # Compute dU/dt in FV layout, then reshape to primary (SD) layout
         dUdt_fv = self.compute_dudt(self.U_cv)
         dUdt_sd = self.primary.transpose_to_sd(dUdt_fv)
