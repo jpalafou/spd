@@ -2,6 +2,7 @@ from typing import Callable, Tuple
 import numpy as np
 import os
 
+from .runtime.data_management import CUPY_AVAILABLE
 from .runtime.data_management import GPUDataManager   # kept for lazy fallback
 from .runtime.data_management import CupyLocation
 from timeit import default_timer as timer
@@ -9,6 +10,9 @@ from .runtime.comms import CommHelper
 from .initial_conditions import sine_wave
 from . import hydro
 from .MHD import mhd
+
+if CUPY_AVAILABLE:
+    import cupy as cp
 
 
 class Simulator:
@@ -94,6 +98,7 @@ class Simulator:
         self.scheme = None  # Set by subclass or factory
         execution_time_categories = [
             "total",
+            "take_step",
             "riemann_solver_sd",
             "mood_loop",
             "compute_candidate_solution",
@@ -487,8 +492,15 @@ class Simulator:
     def perform_iterations(self, n_step: int) -> None:
         self.init_sim()
         for i in range(n_step):
+            if CUPY_AVAILABLE and self.use_cupy:
+                cp.cuda.Device().synchronize()
+            start = timer()
             self.compute_dt()
             self.perform_update()
+            if CUPY_AVAILABLE and self.use_cupy:
+                cp.cuda.Device().synchronize()
+            self.execution_times["take_step"] += timer() - start
+            self.ncalls["take_step"] += 1
         self.end_sim()
 
     def perform_time_evolution(self, t_end: float, nsteps=0) -> None:
