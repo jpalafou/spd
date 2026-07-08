@@ -138,21 +138,37 @@ def RTI(
         return np.zeros(x.shape)
 
 
-def KH_instability(xy: np.ndarray, case: int) -> np.ndarray:
-    y=xy[1]
-    w0=0.1
-    sigma = 0.05/np.sqrt(2)
-    if case==0:
-        return np.where(y<0.25,1,np.where(y<0.75,2,1))
-    elif case==1:
-        return np.where(y<0.25,-0.5,np.where(y<0.75,0.5,-0.5))
-    elif case==2:
-        return w0*np.sin(4*np.pi*xy[0])*(np.exp(-(y-0.25)**2/(2*sigma**2))+np.exp(-(y-0.75)**2/(2*sigma**2)))
-    elif case==4:
-        #Pressure
-        return 2.5*np.ones(y.shape)
+def KH_instability(
+    xy: np.ndarray,
+    case: int,
+    density_jump=1.0,
+    a=0.05,
+    sigma=0.2,
+    u_flow=1.0,
+    A=0.01,
+    P0=10.0,
+    z1=0.5,
+    z2=1.5,
+) -> np.ndarray:
+    x = xy[0]
+    z = xy[1]
+    tanh1 = np.tanh((z - z1) / a)
+    tanh2 = np.tanh((z - z2) / a)
+    if case == 0:
+        return 1.0 + 0.5 * density_jump * (tanh1 - tanh2)
+    elif case == 1:
+        return u_flow * (tanh1 - tanh2 - 1.0)
+    elif case == 2:
+        return A * np.sin(2 * np.pi * x) * (
+            np.exp(-((z - z1) ** 2) / sigma**2)
+            + np.exp(-((z - z2) ** 2) / sigma**2)
+        )
+    elif case == 4:
+        return P0 * np.ones(z.shape)
+    elif case == 5:
+        return 0.5 * (tanh2 - tanh1 + 2.0)
     else:
-        return np.zeros(xy[0].shape)
+        return np.zeros(x.shape)
 
 
 def gresho_vortex(
