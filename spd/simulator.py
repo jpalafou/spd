@@ -101,11 +101,10 @@ class Simulator:
             "take_step",
             "riemann_solver_sd",
             "mood_loop",
-            "compute_candidate_solution",
+            "candidate_solution",
             "detect_troubles",
-            "NAD",
-            "compute_fallback_fluxes",
-            "update_fluxes",
+            "fallback_fluxes",
+            "assign_fluxes",
         ]
         self.execution_times = {cat: 0.0 for cat in execution_time_categories}
         self.ncalls = {cat: 0 for cat in execution_time_categories if cat != "total"}

@@ -382,16 +382,16 @@ class FallbackScheme(FV_Scheme):
         self.W_cv[...] = self.primary.compute_primitives_cv(self.U_cv)
         # Tentative HO update for trouble detection; F_fp still holds HO fluxes
         self.apply_fluxes(dt)
-        self._stop_mood_subtimer("compute_candidate_solution", start)
+        self._stop_mood_subtimer("candidate_solution", start)
         self.detect_troubles()
         # Redirect compute_fluxes output to F_fp_FB so HO fluxes in F_fp survive
         start = self._start_mood_subtimer()
         self.compute_fluxes(self.F_fp_FB, dt)
-        self._stop_mood_subtimer("compute_fallback_fluxes", start)
+        self._stop_mood_subtimer("fallback_fluxes", start)
         # Blend: F_fp = HO, F_fp_FB = MUSCL
         start = self._start_mood_subtimer()
         self.correct_fluxes()
-        self._stop_mood_subtimer("update_fluxes", start)
+        self._stop_mood_subtimer("assign_fluxes", start)
 
     # ----------------------------------------------------------------
     # Solution state delegation to primary (for RK integrator)
