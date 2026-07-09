@@ -588,6 +588,11 @@ class FV_Scheme(SemiDiscreteScheme):
             out[vy] = Pi23
             out[vz] = Pi33
             out[self._p_] = W[vx] * Pi13 + W[vy] * Pi23 + W[vz] * Pi33
+        if self.npassive > 0:
+            _ps_ = self._p_ + 1
+            out[_ps_:_ps_ + self.npassive] = (
+                minus_nu_rho * dWs[normal][_ps_:_ps_ + self.npassive]
+            )
         return out
 
 
