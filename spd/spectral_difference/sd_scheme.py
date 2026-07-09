@@ -38,30 +38,32 @@ if CUPY_AVAILABLE:
 _SUPERFV_DIM_FROM_VEL = {1: "x", 2: "y", 3: "z"}
 
 
-@lru_cache(maxsize=2)
-def _superfv_riemann_kernel(solver_name):
+@lru_cache(maxsize=None)
+def _superfv_riemann_kernel(solver_name, npassive):
     from superfv.riemann_solvers import RiemannSolver, solve_riemann_problem
     from superfv.tools.variable_index_map import VariableIndexMap
 
-    idx = VariableIndexMap(
-        {
-            "rho": 0,
-            "vx": 1,
-            "vy": 2,
-            "vz": 3,
-            "P": 4,
-            "mx": 1,
-            "my": 2,
-            "mz": 3,
-            "E": 4,
-        },
-        group_var_map={
-            "v": ["vx", "vy", "vz"],
-            "m": ["mx", "my", "mz"],
-            "primitives": ["rho", "v", "P"],
-            "conservatives": ["rho", "m", "E"],
-        },
-    )
+    var_idx_map = {
+        "rho": 0,
+        "vx": 1,
+        "vy": 2,
+        "vz": 3,
+        "P": 4,
+        "mx": 1,
+        "my": 2,
+        "mz": 3,
+        "E": 4,
+    }
+    group_var_map = {
+        "v": ["vx", "vy", "vz"],
+        "m": ["mx", "my", "mz"],
+        "primitives": ["rho", "v", "P"],
+        "conservatives": ["rho", "m", "E"],
+    }
+    if npassive == 1:
+        var_idx_map["dye"] = 5
+        group_var_map["passives"] = ["dye"]
+    idx = VariableIndexMap(var_idx_map, group_var_map=group_var_map)
     solver = {
         "hllc": RiemannSolver.HLLC,
         "llf": RiemannSolver.LLF,
@@ -133,17 +135,25 @@ class SD_Scheme(SemiDiscreteScheme):
     ) -> np.ndarray:
         del _p_, min_c2
 
-        if kwargs.get("npassive", self.npassive) != 0:
-            raise NotImplementedError("SuperFV Riemann adapter assumes npassive=0.")
+        npassive = kwargs.get("npassive", self.npassive)
+        if npassive not in (0, 1):
+            raise NotImplementedError(
+                "SuperFV Riemann adapter supports at most one passive dye."
+            )
+        if npassive == 1 and self.passives != ["dye"]:
+            raise NotImplementedError(
+                "SuperFV Riemann adapter only supports the passive variable 'dye'."
+            )
 
         riemann_solver, solve_riemann_problem, idx = _superfv_riemann_kernel(
-            self._superfv_solver_name
+            self._superfv_solver_name, npassive
         )
         dim = _SUPERFV_DIM_FROM_VEL[int(vels[0])]
         W_L = M_L if prims else self.compute_primitives(M_L)
         W_R = M_R if prims else self.compute_primitives(M_R)
         if W_R is F:
             W_R = W_R.copy()
+        F[...] = 0.0
 
         if self.use_cupy:
             cp.cuda.Device().synchronize()
