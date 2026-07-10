@@ -442,7 +442,7 @@ class FallbackScheme(FV_Scheme):
         # Compute dU/dt in FV layout, then reshape to primary (SD) layout
         dUdt_fv = self.compute_dudt(self.U_cv)
         dUdt_sd = self.primary.transpose_to_sd(dUdt_fv)
-        dUdt_sd = self.primary.compute_sp_from_cv(dUdt_sd)
+        dUdt_sd = self.primary.compute_sp_from_cv(dUdt_sd, timer_cat="transpose")
         self.primary.switch_to_high_order(update_solution_points=False)
         self.working_arrays()
         return dUdt_sd

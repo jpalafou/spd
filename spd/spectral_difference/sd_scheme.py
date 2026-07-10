@@ -418,12 +418,12 @@ class SD_Scheme(SemiDiscreteScheme):
     # Transforms between point sets
     # ----------------------------------------------------------------
 
-    def compute_sp_from_cv(self, M_cv) -> np.ndarray:
-        self._start_subtimer("einsum")
+    def compute_sp_from_cv(self, M_cv, timer_cat: str = "einsum") -> np.ndarray:
+        self._start_subtimer(timer_cat)
         try:
             return compute_A_from_B_full(M_cv, self.dm.cv_to_sp, self.ndim)
         finally:
-            self._stop_subtimer("einsum")
+            self._stop_subtimer(timer_cat)
 
     def compute_cv_from_sp(self, M_sp) -> np.ndarray:
         self._start_subtimer("einsum")
@@ -435,11 +435,11 @@ class SD_Scheme(SemiDiscreteScheme):
     def compute_cv_from_sp_fv(self, M_sp) -> np.ndarray:
         """Project sp->cv and emit the FV cell-based layout directly,
         fusing the projection and transpose_to_fv into one einsum."""
-        self._start_subtimer("einsum")
+        self._start_subtimer("transpose")
         try:
             return compute_A_from_B_full_fv(M_sp, self.dm.sp_to_cv, self.ndim)
         finally:
-            self._stop_subtimer("einsum")
+            self._stop_subtimer("transpose")
 
     def compute_cp_from_sp(self, M_sp) -> np.ndarray:
         self._start_subtimer("einsum")
