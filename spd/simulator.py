@@ -2,7 +2,6 @@ from typing import Callable, Tuple
 import numpy as np
 import os
 
-from .runtime.data_management import CUPY_AVAILABLE
 from .runtime.data_management import GPUDataManager   # kept for lazy fallback
 from .runtime.data_management import CupyLocation
 from timeit import default_timer as timer
@@ -10,10 +9,7 @@ from .runtime.comms import CommHelper
 from .initial_conditions import sine_wave
 from . import hydro
 from .MHD import mhd
-
-if CUPY_AVAILABLE:
-    import cupy as cp
-
+from superfv.tools.step_history import MultiTimer
 
 class Simulator:
     """
@@ -96,18 +92,22 @@ class Simulator:
         self.time_integrator = time_integrator
         self.integrator = None
         self.scheme = None  # Set by subclass or factory
-        execution_time_categories = [
+        self.timer_categories = [
             "total",
             "take_step",
-            "riemann_solver_sd",
+            "compute_dt",
+            "primitive_conservative",
+            "boundary_conditions",
+            "einsum",
+            "transpose",
+            "riemann_solver",
             "mood_loop",
             "candidate_solution",
             "detect_troubles",
             "fallback_fluxes",
             "assign_fluxes",
         ]
-        self.execution_times = {cat: 0.0 for cat in execution_time_categories}
-        self.ncalls = {cat: 0 for cat in execution_time_categories if cat != "total"}
+        self.timer = MultiTimer(self.timer_categories)
         ndim = len(N)
         self.ndim = ndim
         assert len(BC) >= ndim
@@ -221,6 +221,12 @@ class Simulator:
             object.__setattr__(self, '_dm', dm)
         return dm
 
+    def _start_subtimer(self, cat):
+        self.timer.start(cat, self.use_cupy)
+
+    def _stop_subtimer(self, cat):
+        self.timer.stop(cat, self.use_cupy)
+
     # ----------------------------------------------------------------
     # Integrator selection
     # ----------------------------------------------------------------
@@ -312,28 +318,36 @@ class Simulator:
         self.scheme.post_init()
 
     def compute_primitives(self, U, **kwargs) -> np.ndarray:
-        return self.equations.compute_primitives(
-            U,
-            self.vels,
-            self._p_,
-            self.gamma,
-            _t_=self._t_,
-            thdiffusion=self.thdiffusion,
-            npassive=self.npassive,
-            **kwargs,
-        )
+        self._start_subtimer("primitive_conservative")
+        try:
+            return self.equations.compute_primitives(
+                U,
+                self.vels,
+                self._p_,
+                self.gamma,
+                _t_=self._t_,
+                thdiffusion=self.thdiffusion,
+                npassive=self.npassive,
+                **kwargs,
+            )
+        finally:
+            self._stop_subtimer("primitive_conservative")
 
     def compute_conservatives(self, W, **kwargs) -> np.ndarray:
-        return self.equations.compute_conservatives(
-            W,
-            self.vels,
-            self._p_,
-            self.gamma,
-            _t_=self._t_,
-            thdiffusion=self.thdiffusion,
-            npassive=self.npassive,
-            **kwargs,
-        )
+        self._start_subtimer("primitive_conservative")
+        try:
+            return self.equations.compute_conservatives(
+                W,
+                self.vels,
+                self._p_,
+                self.gamma,
+                _t_=self._t_,
+                thdiffusion=self.thdiffusion,
+                npassive=self.npassive,
+                **kwargs,
+            )
+        finally:
+            self._stop_subtimer("primitive_conservative")
 
     def compute_fluxes(self, F, M, vels, prims) -> np.ndarray:
         if prims:
@@ -449,10 +463,11 @@ class Simulator:
         self.checkpoint = False
         self.switch_to_device()
         self.create_dicts()
-        self.execution_times["total"] = -timer()
+        self.timer = MultiTimer(self.timer_categories)
+        self._start_subtimer("total")
 
     def end_sim(self):
-        self.execution_times["total"] += timer()
+        self._stop_subtimer("total")
         # Convert while arrays are still on the device: the host-side
         # conversion (numpy einsum) is orders of magnitude slower.
         self.convert_solution()
@@ -461,16 +476,19 @@ class Simulator:
         if self.rank == 0:
             print(
                 f"t={self.time}, steps taken {self.n_step}, "
-                f"time taken {np.round(self.execution_times["total"],3)}, bzcps = {np.round(self.zone_cycles/1E+9,3)}"
+                f"time taken {np.round(self.timer['total'].cum_time,3)}, bzcps = {np.round(self.zone_cycles/1E+9,3)}"
             )
 
     @property
     def elapsed_time(self):
-        return self.execution_times["total"] - timer()
+        total_timer = self.timer["total"]
+        if total_timer.is_timing:
+            return total_timer.cum_time + timer() - total_timer.start_time
+        return total_timer.cum_time
 
     @property
     def cost_per_step(self):
-        cost = 0 if self.n_step == 0 else self.execution_times["total"] / self.n_step
+        cost = 0 if self.n_step == 0 else self.elapsed_time / self.n_step
         return cost
 
     @property
@@ -491,15 +509,14 @@ class Simulator:
     def perform_iterations(self, n_step: int) -> None:
         self.init_sim()
         for i in range(n_step):
-            if CUPY_AVAILABLE and self.use_cupy:
-                cp.cuda.Device().synchronize()
-            start = timer()
+            self._start_subtimer("take_step")
+
+            self._start_subtimer("compute_dt")
             self.compute_dt()
+            self._stop_subtimer("compute_dt")
+
             self.perform_update()
-            if CUPY_AVAILABLE and self.use_cupy:
-                cp.cuda.Device().synchronize()
-            self.execution_times["take_step"] += timer() - start
-            self.ncalls["take_step"] += 1
+            self._stop_subtimer("take_step")
         self.end_sim()
 
     def perform_time_evolution(self, t_end: float, nsteps=0) -> None:
@@ -507,7 +524,12 @@ class Simulator:
         while self.time < t_end:
             if not self.n_step % 100 and self.rank == 0 and self.verbose:
                 print(f"Time step #{self.n_step} (t = {np.round(self.time,3)})", end="\r")
+            self._start_subtimer("take_step")
+
+            self._start_subtimer("compute_dt")
             self.compute_dt()
+            self._stop_subtimer("compute_dt")
+
             if self.time + self.dt >= t_end:
                 dt = t_end - self.time
                 if dt > 1e-14:
@@ -515,8 +537,12 @@ class Simulator:
                     self.scheme.dt = dt
                 else:
                     print(f"dt={dt}")
+                    self._stop_subtimer("take_step")
                     break
             self.status = self.perform_update()
+
+            self._stop_subtimer("take_step")
+
             if not (self.checkpoint):
                 if (
                     (self.available_time - self.elapsed_time) < 120

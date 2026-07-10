@@ -517,6 +517,7 @@ class FV_Scheme(SemiDiscreteScheme):
             M_eq_fp = self.dm.__getattribute__(f"M_eq_fp_{dim}")
             self.MR_fp[dim][...] += M_eq_fp
             self.ML_fp[dim][...] += M_eq_fp
+        self._start_subtimer("riemann_solver")
         F[...] = self.riemann_solver(
             self.ML_fp[dim],
             self.MR_fp[dim],
@@ -528,6 +529,7 @@ class FV_Scheme(SemiDiscreteScheme):
             prims,
             npassive=self.npassive,
         )
+        self._stop_subtimer("riemann_solver")
         if self.WB:
             F -= self.dm.__getattribute__(f"F_eq_fp_{dim}")
 
@@ -898,10 +900,12 @@ class FV_Scheme(SemiDiscreteScheme):
 
     def Boundaries(self, M: np.ndarray, all=True):
         """Apply boundary conditions to all dimensions."""
+        self._start_subtimer("boundary_conditions")
         for dim in self.dims:
             self.store_BC(M, dim, all)
             self.Comms(M, dim)
             self.apply_BC(dim)
+        self._stop_subtimer("boundary_conditions")
 
     def Boundaries_scalar(self, M: np.ndarray):
         """Fill ghost cells for an auxiliary scalar field (e.g. the trouble
@@ -918,6 +922,7 @@ class FV_Scheme(SemiDiscreteScheme):
         ``affected_faces`` of 8 on boundary faces and make ``correct_fluxes``
         amplify (rather than replace) the high-order flux there.
         """
+        self._start_subtimer("boundary_conditions")
         ngh = self.Nghc
         for dim in self.dims:
             idim = self.dims[dim]
@@ -933,6 +938,7 @@ class FV_Scheme(SemiDiscreteScheme):
             self.comms.Comms_fv(self.dm, M, self.BC_fp_scalar, idim, dim, ngh)
             M[cut(None, ngh, idim)] = bc[0]
             M[cut(-ngh, None, idim)] = bc[1]
+        self._stop_subtimer("boundary_conditions")
 
     def Comms(self, M: np.ndarray, dim: str):
         comms = self.comms

@@ -8,8 +8,6 @@ formulation dU/dt = L(U).
 """
 
 from functools import lru_cache
-from timeit import default_timer as timer
-
 import numpy as np
 
 from spd.schemes.scheme import SemiDiscreteScheme
@@ -155,15 +153,9 @@ class SD_Scheme(SemiDiscreteScheme):
             W_R = W_R.copy()
         F[...] = 0.0
 
-        if self.use_cupy:
-            cp.cuda.Device().synchronize()
-        start = timer()
-        
+        self._start_subtimer("riemann_solver")
         solve_riemann_problem(W_L, W_R, F, riemann_solver, dim, idx, gamma)
-
-        if self.use_cupy:
-            cp.cuda.Device().synchronize()
-        self.execution_times["riemann_solver_sd"] += timer() - start
+        self._stop_subtimer("riemann_solver")
 
         return F
 
@@ -427,30 +419,62 @@ class SD_Scheme(SemiDiscreteScheme):
     # ----------------------------------------------------------------
 
     def compute_sp_from_cv(self, M_cv) -> np.ndarray:
-        return compute_A_from_B_full(M_cv, self.dm.cv_to_sp, self.ndim)
+        self._start_subtimer("einsum")
+        try:
+            return compute_A_from_B_full(M_cv, self.dm.cv_to_sp, self.ndim)
+        finally:
+            self._stop_subtimer("einsum")
 
     def compute_cv_from_sp(self, M_sp) -> np.ndarray:
-        return compute_A_from_B_full(M_sp, self.dm.sp_to_cv, self.ndim)
+        self._start_subtimer("einsum")
+        try:
+            return compute_A_from_B_full(M_sp, self.dm.sp_to_cv, self.ndim)
+        finally:
+            self._stop_subtimer("einsum")
 
     def compute_cv_from_sp_fv(self, M_sp) -> np.ndarray:
         """Project sp->cv and emit the FV cell-based layout directly,
         fusing the projection and transpose_to_fv into one einsum."""
-        return compute_A_from_B_full_fv(M_sp, self.dm.sp_to_cv, self.ndim)
+        self._start_subtimer("einsum")
+        try:
+            return compute_A_from_B_full_fv(M_sp, self.dm.sp_to_cv, self.ndim)
+        finally:
+            self._stop_subtimer("einsum")
 
     def compute_cp_from_sp(self, M_sp) -> np.ndarray:
-        return compute_A_from_B_full(M_sp, self.dm.sp_to_fp, self.ndim)
+        self._start_subtimer("einsum")
+        try:
+            return compute_A_from_B_full(M_sp, self.dm.sp_to_fp, self.ndim)
+        finally:
+            self._stop_subtimer("einsum")
 
     def compute_sp_from_cp(self, M_cp) -> np.ndarray:
-        return compute_A_from_B_full(M_cp, self.dm.fp_to_sp, self.ndim)
+        self._start_subtimer("einsum")
+        try:
+            return compute_A_from_B_full(M_cp, self.dm.fp_to_sp, self.ndim)
+        finally:
+            self._stop_subtimer("einsum")
 
     def compute_sp_from_fp(self, M_fp, dim, **kwargs) -> np.ndarray:
-        return compute_A_from_B(M_fp, self.dm.fp_to_sp, dim, self.ndim, **kwargs)
+        self._start_subtimer("einsum")
+        try:
+            return compute_A_from_B(M_fp, self.dm.fp_to_sp, dim, self.ndim, **kwargs)
+        finally:
+            self._stop_subtimer("einsum")
 
     def compute_fp_from_sp(self, M_sp, dim, **kwargs) -> np.ndarray:
-        return compute_A_from_B(M_sp, self.dm.sp_to_fp, dim, self.ndim, **kwargs)
+        self._start_subtimer("einsum")
+        try:
+            return compute_A_from_B(M_sp, self.dm.sp_to_fp, dim, self.ndim, **kwargs)
+        finally:
+            self._stop_subtimer("einsum")
 
     def compute_sp_from_dfp(self, M_fp, dim, **kwargs) -> np.ndarray:
-        return compute_A_from_B(M_fp, self.dm.dfp_to_sp, dim, self.ndim, **kwargs)
+        self._start_subtimer("einsum")
+        try:
+            return compute_A_from_B(M_fp, self.dm.dfp_to_sp, dim, self.ndim, **kwargs)
+        finally:
+            self._stop_subtimer("einsum")
 
     def compute_sp_from_dfp_x(self, Fx, ader=True):
         return self.compute_sp_from_dfp(Fx, "x", ader=ader) / self.h["x"]
@@ -464,9 +488,11 @@ class SD_Scheme(SemiDiscreteScheme):
     def integrate_faces(self, M_fp, dim, ader=True):
         for other_dim in self.dims:
             if dim != other_dim:
+                self._start_subtimer("einsum")
                 M_fp = compute_A_from_B(
                     M_fp, self.dm.sp_to_cv, other_dim, self.ndim, ader=ader
                 )
+                self._stop_subtimer("einsum")
         return M_fp
 
     def compute_gradient(self, M_fp, dim, ader=True):
@@ -479,36 +505,44 @@ class SD_Scheme(SemiDiscreteScheme):
     def transpose_to_fv(self, M):
         """Transpose SD element-based array to FV cell-based layout."""
         # nvar,Nz,Ny,Nx,nz,ny,nx → nvar,Nznz,Nyny,Nxnx
-        if self.ndim == 1:
-            assert M.ndim == 3
-            return M.reshape(M.shape[0], M.shape[1] * M.shape[2])
-        elif self.ndim == 2:
-            assert M.ndim == 5
-            return np.transpose(M, (0, 1, 3, 2, 4)).reshape(
-                M.shape[0], M.shape[1] * M.shape[3], M.shape[2] * M.shape[4]
-            )
-        else:
-            assert M.ndim == 7
-            return np.transpose(M, (0, 1, 4, 2, 5, 3, 6)).reshape(
-                M.shape[0],
-                M.shape[1] * M.shape[4],
-                M.shape[2] * M.shape[5],
-                M.shape[3] * M.shape[6],
-            )
+        self._start_subtimer("transpose")
+        try:
+            if self.ndim == 1:
+                assert M.ndim == 3
+                return M.reshape(M.shape[0], M.shape[1] * M.shape[2])
+            elif self.ndim == 2:
+                assert M.ndim == 5
+                return np.transpose(M, (0, 1, 3, 2, 4)).reshape(
+                    M.shape[0], M.shape[1] * M.shape[3], M.shape[2] * M.shape[4]
+                )
+            else:
+                assert M.ndim == 7
+                return np.transpose(M, (0, 1, 4, 2, 5, 3, 6)).reshape(
+                    M.shape[0],
+                    M.shape[1] * M.shape[4],
+                    M.shape[2] * M.shape[5],
+                    M.shape[3] * M.shape[6],
+                )
+        finally:
+            self._stop_subtimer("transpose")
 
     def transpose_to_sd(self, M):
         """Transpose FV cell-based array to SD element-based layout."""
         # nvar,Nznz,Nyny,Nxnx → nvar,Nz,Ny,Nx,nz,ny,nx
-        shape = []
-        for dim in self.dims:
-            shape += [self.n[dim], self.N[dim]]
-        shape = [M.shape[0]] + shape[::-1]
-        if self.ndim == 1:
-            return M.reshape(shape)
-        elif self.ndim == 2:
-            return np.transpose(M.reshape(shape), (0, 1, 3, 2, 4))
-        else:
-            return np.transpose(M.reshape(shape), (0, 1, 3, 5, 2, 4, 6))
+        self._start_subtimer("transpose")
+        try:
+            shape = []
+            for dim in self.dims:
+                shape += [self.n[dim], self.N[dim]]
+            shape = [M.shape[0]] + shape[::-1]
+            if self.ndim == 1:
+                return M.reshape(shape)
+            elif self.ndim == 2:
+                return np.transpose(M.reshape(shape), (0, 1, 3, 2, 4))
+            else:
+                return np.transpose(M.reshape(shape), (0, 1, 3, 5, 2, 4, 6))
+        finally:
+            self._stop_subtimer("transpose")
 
     def interpolate_to_regular_mesh(self, W):
         """Interpolate solution to a regular mesh."""
@@ -575,7 +609,9 @@ class SD_Scheme(SemiDiscreteScheme):
             if self.WB:
                 # U' -> U
                 self.M_fp[dim] += self.dm.__getattribute__(f"M_eq_fp_{dim}")[:, na]
+            self._start_subtimer("boundary_conditions")
             bc.Boundaries(self, self.M_fp[dim], dim)
+            self._stop_subtimer("boundary_conditions")
             self.compute_fluxes(self.F_fp[dim], self.M_fp[dim], vels, prims)
             bc.store_interfaces(self, self.M_fp[dim], dim)
             F = self.riemann_solver(
@@ -591,7 +627,6 @@ class SD_Scheme(SemiDiscreteScheme):
                 thdiffusion=self.thdiffusion,
                 _t_=self._t_,
             )
-            self.ncalls["riemann_solver_sd"] += 1
             bc.apply_interfaces(self, F, self.F_fp[dim], dim)
             if self.WB:
                 # F -> F'
@@ -606,7 +641,9 @@ class SD_Scheme(SemiDiscreteScheme):
         for dim in self.dims:
             idim = self.dims[dim]
             self.M_fp[dim][...] = self.compute_primitives(self.M_fp[dim])
+            self._start_subtimer("boundary_conditions")
             bc.Boundaries_sd(self, self.M_fp[dim], dim)
+            self._stop_subtimer("boundary_conditions")
             M = self.ML_fp[dim]
             bc.apply_interfaces(self, M, self.M_fp[dim], dim)
             dW_sp[idim] = self.compute_gradient(self.M_fp[dim], dim, ader=ader)
@@ -619,7 +656,9 @@ class SD_Scheme(SemiDiscreteScheme):
                 dW_fp[idim] = self.compute_fp_from_sp(
                     dW_sp[idim], dim, ader=ader
                 )
+                self._start_subtimer("boundary_conditions")
                 bc.Boundaries_sd(self, dW_fp[idim], dim)
+                self._stop_subtimer("boundary_conditions")
                 dW = self.MR_fp[dim]
                 bc.apply_interfaces(self, dW, dW_fp[idim], dim)
             self.F_fp[dim][...] -= self.compute_viscous_fluxes(

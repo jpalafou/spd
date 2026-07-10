@@ -114,12 +114,14 @@ class SemiDiscreteScheme:
             )
             if ader_iter < self.m:
                 s = self.ader_string()
+                self._start_subtimer("einsum")
                 self.dm.U_ader[...] = (
                     np.einsum(
                         f"np,up{s}->un{s}", self.dm.invader, dUdt
                     )
                     * self.dt
                 )
+                self._stop_subtimer("einsum")
                 self.dm.U_ader[...] = (
                     self.get_solution(ader=True) - self.dm.U_ader
                 )
@@ -127,7 +129,9 @@ class SemiDiscreteScheme:
     def ader_update(self):
         dUdt = self.compute_dudt(self.dm.U_ader, ader=True)
         s = self.ader_string()
+        self._start_subtimer("einsum")
         dU = np.einsum(f"t,ut{s}->u{s}", self.dm.w_tp, dUdt) * self.dt
+        self._stop_subtimer("einsum")
         self.update_solution(dU)
 
     # ----------------------------------------------------------------
