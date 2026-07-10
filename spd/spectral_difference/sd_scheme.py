@@ -560,13 +560,13 @@ class SD_Scheme(SemiDiscreteScheme):
     # Primitives / equilibrium helpers
     # ----------------------------------------------------------------
 
-    def compute_primitives_cv(self, U) -> np.ndarray:
+    def compute_primitives_cv(self, U, call_timer: bool = True) -> np.ndarray:
         if self.WB:
             return self.compute_primitives(
-                U + self.dm.U_eq_cv
-            ) - self.compute_primitives(self.dm.U_eq_cv)
+                U + self.dm.U_eq_cv, call_timer=call_timer
+            ) - self.compute_primitives(self.dm.U_eq_cv, call_timer=call_timer)
         else:
-            return self.compute_primitives(U)
+            return self.compute_primitives(U, call_timer=call_timer)
 
     # ----------------------------------------------------------------
     # CFL time step

@@ -317,8 +317,8 @@ class Simulator:
     def post_init(self) -> None:
         self.scheme.post_init()
 
-    def compute_primitives(self, U, **kwargs) -> np.ndarray:
-        self._start_subtimer("primitive_conservative")
+    def compute_primitives(self, U, call_timer: bool = True, **kwargs) -> np.ndarray:
+        call_timer and self._start_subtimer("primitive_conservative")
         try:
             return self.equations.compute_primitives(
                 U,
@@ -331,10 +331,10 @@ class Simulator:
                 **kwargs,
             )
         finally:
-            self._stop_subtimer("primitive_conservative")
+            call_timer and self._stop_subtimer("primitive_conservative")
 
-    def compute_conservatives(self, W, **kwargs) -> np.ndarray:
-        self._start_subtimer("primitive_conservative")
+    def compute_conservatives(self, W, call_timer: bool = True, **kwargs) -> np.ndarray:
+        call_timer and self._start_subtimer("primitive_conservative")
         try:
             return self.equations.compute_conservatives(
                 W,
@@ -347,7 +347,7 @@ class Simulator:
                 **kwargs,
             )
         finally:
-            self._stop_subtimer("primitive_conservative")
+            call_timer and self._stop_subtimer("primitive_conservative")
 
     def compute_fluxes(self, F, M, vels, prims) -> np.ndarray:
         if prims:

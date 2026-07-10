@@ -366,14 +366,16 @@ class FallbackScheme(FV_Scheme):
         4. Blend F_fp (HO) and F_fp_FB (MUSCL) based on trouble indicators.
         """
         self._start_subtimer("candidate_solution")
-        self.W_cv[...] = self.primary.compute_primitives_cv(self.U_cv)
+        self.W_cv[...] = self.primary.compute_primitives_cv(
+            self.U_cv, call_timer=False
+        )
         # Tentative HO update for trouble detection; F_fp still holds HO fluxes
         self.apply_fluxes(dt)
         self._stop_subtimer("candidate_solution")
         self.detect_troubles()
         # Redirect compute_fluxes output to F_fp_FB so HO fluxes in F_fp survive
         self._start_subtimer("fallback_fluxes")
-        self.compute_fluxes(self.F_fp_FB, dt)
+        self.compute_fluxes(self.F_fp_FB, dt, call_timer=False)
         self._stop_subtimer("fallback_fluxes")
         # Blend: F_fp = HO, F_fp_FB = MUSCL
         self._start_subtimer("assign_fluxes")
@@ -389,13 +391,13 @@ class FallbackScheme(FV_Scheme):
             return self.primary.array_sp(**kwargs)
         return super().array_sp(**kwargs)
 
-    def compute_primitives_cv(self, U):
+    def compute_primitives_cv(self, U, call_timer: bool = True):
         # The well-balanced equilibrium conservatives live on the primary's
         # data manager (and follow its SD<->FV layout toggling), so delegate
         # the perturbation->primitive conversion to the primary.
         if self.primary is not None:
-            return self.primary.compute_primitives_cv(U)
-        return super().compute_primitives_cv(U)
+            return self.primary.compute_primitives_cv(U, call_timer=call_timer)
+        return super().compute_primitives_cv(U, call_timer=call_timer)
 
     def convert_solution(self, W=False):
         # With a primary, the solution state (and its well-balanced

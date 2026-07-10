@@ -167,7 +167,7 @@ class SemiDiscreteScheme:
         """Convert between conservative/primitive or point representations."""
         pass
 
-    def compute_primitives_cv(self, U):
+    def compute_primitives_cv(self, U, call_timer: bool = True):
         """
         Compute primitive variables from conservatives, handling
         the well-balanced case when WB is enabled.
@@ -180,11 +180,11 @@ class SemiDiscreteScheme:
             if U.ndim > U_eq.ndim:
                 U_eq = U_eq[:, np.newaxis]
             return (
-                self.compute_primitives(U + U_eq)
-                - self.compute_primitives(U_eq)
+                self.compute_primitives(U + U_eq, call_timer=call_timer)
+                - self.compute_primitives(U_eq, call_timer=call_timer)
             )
         else:
-            return self.compute_primitives(U)
+            return self.compute_primitives(U, call_timer=call_timer)
 
     def post_update(self):
         """Called after the time integrator completes a step."""

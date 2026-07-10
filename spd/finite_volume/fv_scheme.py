@@ -508,7 +508,7 @@ class FV_Scheme(SemiDiscreteScheme):
     # ----------------------------------------------------------------
 
     def solve_riemann_problem(
-        self, dim: str, F: np.ndarray, prims: bool
+        self, dim: str, F: np.ndarray, prims: bool, call_timer: bool = True
     ) -> None:
         """Solve the Riemann problem at FV cell interfaces."""
         idim = self.dims[dim]
@@ -517,7 +517,7 @@ class FV_Scheme(SemiDiscreteScheme):
             M_eq_fp = self.dm.__getattribute__(f"M_eq_fp_{dim}")
             self.MR_fp[dim][...] += M_eq_fp
             self.ML_fp[dim][...] += M_eq_fp
-        self._start_subtimer("riemann_solver")
+        call_timer and self._start_subtimer("riemann_solver")
         F[...] = self.riemann_solver(
             self.ML_fp[dim],
             self.MR_fp[dim],
@@ -529,7 +529,7 @@ class FV_Scheme(SemiDiscreteScheme):
             prims,
             npassive=self.npassive,
         )
-        self._stop_subtimer("riemann_solver")
+        call_timer and self._stop_subtimer("riemann_solver")
         if self.WB:
             F -= self.dm.__getattribute__(f"F_eq_fp_{dim}")
 
@@ -537,14 +537,14 @@ class FV_Scheme(SemiDiscreteScheme):
     # Flux computation and RHS
     # ----------------------------------------------------------------
 
-    def compute_fluxes(self, F, dt: float) -> None:
+    def compute_fluxes(self, F, dt: float, call_timer: bool = True) -> None:
         """Compute FV fluxes: fill ghost cells, then MUSCL + Riemann."""
         self.dm.M[...] = 0
         self.fill_active_region(self.W_cv)
-        self.Boundaries(self.dm.M)
-        self.fluxes(self, F, dt)
+        self.Boundaries(self.dm.M, call_timer=call_timer)
+        self.fluxes(self, F, dt, call_timer=call_timer)
         if self.viscosity or self.thdiffusion:
-            self.compute_nabla_terms(F)
+            self.compute_nabla_terms(F, call_timer=call_timer)
 
 
     def compute_second_order_viscous_fluxes(self, W, dWs, normal):
@@ -598,14 +598,14 @@ class FV_Scheme(SemiDiscreteScheme):
         return out
 
 
-    def compute_nabla_terms(self,F: dict):
+    def compute_nabla_terms(self, F: dict, call_timer: bool = True):
         """Add centered, second-order viscous fluxes at cell faces."""
         ngh = self.Nghc
 
         # Viscosity uses the cell-centered state before the Hancock predictor.
         self.dm.M[...] = 0
         self.fill_active_region(self.W_cv)
-        self.Boundaries(self.dm.M)
+        self.Boundaries(self.dm.M, call_timer=call_timer)
 
         def cell_view(normal_dim, side, transverse_dim=None, offset=0):
             """View cells beside a face, optionally shifted transversely."""
@@ -898,16 +898,16 @@ class FV_Scheme(SemiDiscreteScheme):
         self.dm.M[cut(None, ngh, idim)] = self.BC_fp[dim][0]
         self.dm.M[cut(-ngh, None, idim)] = self.BC_fp[dim][1]
 
-    def Boundaries(self, M: np.ndarray, all=True):
+    def Boundaries(self, M: np.ndarray, all=True, call_timer: bool = True):
         """Apply boundary conditions to all dimensions."""
-        self._start_subtimer("boundary_conditions")
+        call_timer and self._start_subtimer("boundary_conditions")
         for dim in self.dims:
             self.store_BC(M, dim, all)
             self.Comms(M, dim)
             self.apply_BC(dim)
-        self._stop_subtimer("boundary_conditions")
+        call_timer and self._stop_subtimer("boundary_conditions")
 
-    def Boundaries_scalar(self, M: np.ndarray):
+    def Boundaries_scalar(self, M: np.ndarray, call_timer: bool = True):
         """Fill ghost cells for an auxiliary scalar field (e.g. the trouble
         indicator) **without** touching the solution ``BC_fp`` buffer.
 
@@ -922,7 +922,7 @@ class FV_Scheme(SemiDiscreteScheme):
         ``affected_faces`` of 8 on boundary faces and make ``correct_fluxes``
         amplify (rather than replace) the high-order flux there.
         """
-        self._start_subtimer("boundary_conditions")
+        call_timer and self._start_subtimer("boundary_conditions")
         ngh = self.Nghc
         for dim in self.dims:
             idim = self.dims[dim]
@@ -938,7 +938,7 @@ class FV_Scheme(SemiDiscreteScheme):
             self.comms.Comms_fv(self.dm, M, self.BC_fp_scalar, idim, dim, ngh)
             M[cut(None, ngh, idim)] = bc[0]
             M[cut(-ngh, None, idim)] = bc[1]
-        self._stop_subtimer("boundary_conditions")
+        call_timer and self._stop_subtimer("boundary_conditions")
 
     def Comms(self, M: np.ndarray, dim: str):
         comms = self.comms
