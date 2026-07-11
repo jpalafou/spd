@@ -12,6 +12,7 @@ from itertools import repeat
 
 from spd.schemes.scheme import SemiDiscreteScheme
 from spd.riemann_solvers.riemann_solver_1D import Riemann_solver_1D as rs1d
+from spd.riemann_solvers.superfv_adapter import superfv_riemann, uses_superfv_riemann
 from . import muscl
 from spd.numerics.polynomials import quadrature_mean
 from spd.numerics.slicing import cut, crop_fv
@@ -47,7 +48,11 @@ class FV_Scheme(SemiDiscreteScheme):
         dm=None,
     ):
         super().__init__(sim)
-        self.riemann_solver = rs1d(riemann_solver, equations).solver
+        if uses_superfv_riemann(equations, riemann_solver):
+            self._superfv_solver_name = riemann_solver
+            self.riemann_solver = self._superfv_riemann
+        else:
+            self.riemann_solver = rs1d(riemann_solver, equations).solver
         self.slope_limiter = muscl.Slope_limiter(slope_limiter)
         self.scheme = scheme
         if scheme == "MUSCL":
@@ -61,6 +66,32 @@ class FV_Scheme(SemiDiscreteScheme):
         self.centers = {}
         self.h_fp = {}
         self.h_cv = {}
+
+    def _superfv_riemann(
+        self,
+        M_L: np.ndarray,
+        M_R: np.ndarray,
+        F: np.ndarray,
+        vels: np.array,
+        _p_: int,
+        gamma: float,
+        min_c2: float,
+        prims: bool,
+        **kwargs,
+    ) -> np.ndarray:
+        return superfv_riemann(
+            self,
+            M_L,
+            M_R,
+            F,
+            vels,
+            _p_,
+            gamma,
+            min_c2,
+            prims,
+            self._superfv_solver_name,
+            **kwargs,
+        )
 
     # ----------------------------------------------------------------
     # Initialization
@@ -527,6 +558,7 @@ class FV_Scheme(SemiDiscreteScheme):
             self.gamma,
             self.min_c2,
             prims,
+            call_timer=False,
             npassive=self.npassive,
         )
         call_timer and self._stop_subtimer("riemann_solver")

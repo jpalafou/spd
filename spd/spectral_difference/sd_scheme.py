@@ -7,7 +7,6 @@ Computes the spatial operator L(U) = -div(F) for the method-of-lines
 formulation dU/dt = L(U).
 """
 
-from functools import lru_cache
 import numpy as np
 
 from spd.schemes.scheme import SemiDiscreteScheme
@@ -20,6 +19,7 @@ from spd.numerics.polynomials import (
 )
 
 from spd.riemann_solvers.riemann_solver_1D import Riemann_solver_1D as rs1d
+from spd.riemann_solvers.superfv_adapter import superfv_riemann, uses_superfv_riemann
 from spd.numerics.transforms import (
     compute_A_from_B,
     compute_A_from_B_full,
@@ -32,42 +32,6 @@ from spd.runtime.data_management import CUPY_AVAILABLE
 
 if CUPY_AVAILABLE:
     import cupy as cp
-
-_SUPERFV_DIM_FROM_VEL = {1: "x", 2: "y", 3: "z"}
-
-
-@lru_cache(maxsize=None)
-def _superfv_riemann_kernel(solver_name, npassive):
-    from superfv.riemann_solvers import RiemannSolver, solve_riemann_problem
-    from superfv.tools.variable_index_map import VariableIndexMap
-
-    var_idx_map = {
-        "rho": 0,
-        "vx": 1,
-        "vy": 2,
-        "vz": 3,
-        "P": 4,
-        "mx": 1,
-        "my": 2,
-        "mz": 3,
-        "E": 4,
-    }
-    group_var_map = {
-        "v": ["vx", "vy", "vz"],
-        "m": ["mx", "my", "mz"],
-        "primitives": ["rho", "v", "P"],
-        "conservatives": ["rho", "m", "E"],
-    }
-    if npassive == 1:
-        var_idx_map["dye"] = 5
-        group_var_map["passives"] = ["dye"]
-    idx = VariableIndexMap(var_idx_map, group_var_map=group_var_map)
-    solver = {
-        "hllc": RiemannSolver.HLLC,
-        "llf": RiemannSolver.LLF,
-    }[solver_name]
-    return solver, solve_riemann_problem, idx
-
 
 class SD_Scheme(SemiDiscreteScheme):
     """
@@ -102,7 +66,7 @@ class SD_Scheme(SemiDiscreteScheme):
         self.centers = {}
         self.h_fp = {}
         self.h_cv = {}
-        if soe == "hydro" and riemann_solver in ("hllc", "llf"):
+        if uses_superfv_riemann(soe, riemann_solver):
             self._superfv_solver_name = riemann_solver
             self.riemann_solver = self._superfv_riemann
         else:
@@ -131,33 +95,19 @@ class SD_Scheme(SemiDiscreteScheme):
         prims: bool,
         **kwargs,
     ) -> np.ndarray:
-        del _p_, min_c2
-
-        npassive = kwargs.get("npassive", self.npassive)
-        if npassive not in (0, 1):
-            raise NotImplementedError(
-                "SuperFV Riemann adapter supports at most one passive dye."
-            )
-        if npassive == 1 and self.passives != ["dye"]:
-            raise NotImplementedError(
-                "SuperFV Riemann adapter only supports the passive variable 'dye'."
-            )
-
-        riemann_solver, solve_riemann_problem, idx = _superfv_riemann_kernel(
-            self._superfv_solver_name, npassive
+        return superfv_riemann(
+            self,
+            M_L,
+            M_R,
+            F,
+            vels,
+            _p_,
+            gamma,
+            min_c2,
+            prims,
+            self._superfv_solver_name,
+            **kwargs,
         )
-        dim = _SUPERFV_DIM_FROM_VEL[int(vels[0])]
-        W_L = M_L if prims else self.compute_primitives(M_L)
-        W_R = M_R if prims else self.compute_primitives(M_R)
-        if W_R is F:
-            W_R = W_R.copy()
-        F[...] = 0.0
-
-        self._start_subtimer("riemann_solver")
-        solve_riemann_problem(W_L, W_R, F, riemann_solver, dim, idx, gamma)
-        self._stop_subtimer("riemann_solver")
-
-        return F
 
     # ----------------------------------------------------------------
     # Initialization
