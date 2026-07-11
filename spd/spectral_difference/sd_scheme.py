@@ -250,9 +250,9 @@ class SD_Scheme(SemiDiscreteScheme):
         self.W_gh = W_gh
         self.W_init_cv = self.active_region(W_gh)
         self.dm.W_cv = self.W_init_cv.copy()
-        self.dm.W_sp = self.compute_sp_from_cv(self.dm.W_cv)
-        self.dm.U_sp = self.compute_conservatives(self.dm.W_sp)
-        self.dm.U_cv = self.compute_conservatives(self.dm.W_cv)
+        self.dm.W_sp = self.compute_sp_from_cv(self.dm.W_cv, call_timer=False)
+        self.dm.U_sp = self.compute_conservatives(self.dm.W_sp, call_timer=False)
+        self.dm.U_cv = self.compute_conservatives(self.dm.W_cv, call_timer=False)
 
     def init_Boundaries(self) -> None:
         ndim = self.ndim
@@ -368,19 +368,19 @@ class SD_Scheme(SemiDiscreteScheme):
     # Transforms between point sets
     # ----------------------------------------------------------------
 
-    def compute_sp_from_cv(self, M_cv, timer_cat: str = "einsum") -> np.ndarray:
-        self._start_subtimer(timer_cat)
+    def compute_sp_from_cv(self, M_cv, call_timer: bool = True, timer_cat: str = "einsum") -> np.ndarray:
+        call_timer and self._start_subtimer(timer_cat)
         try:
             return compute_A_from_B_full(M_cv, self.dm.cv_to_sp, self.ndim)
         finally:
-            self._stop_subtimer(timer_cat)
+            call_timer and self._stop_subtimer(timer_cat)
 
-    def compute_cv_from_sp(self, M_sp) -> np.ndarray:
-        self._start_subtimer("einsum")
+    def compute_cv_from_sp(self, M_sp, call_timer: bool = True) -> np.ndarray:
+        call_timer and self._start_subtimer("einsum")
         try:
             return compute_A_from_B_full(M_sp, self.dm.sp_to_cv, self.ndim)
         finally:
-            self._stop_subtimer("einsum")
+            call_timer and self._stop_subtimer("einsum")
 
     def compute_cv_from_sp_fv(self, M_sp) -> np.ndarray:
         """Project sp->cv and emit the FV cell-based layout directly,
@@ -654,13 +654,13 @@ class SD_Scheme(SemiDiscreteScheme):
         self.dm.U_sp -= dU
         self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp)
 
-    def convert_solution(self, W=False):
+    def convert_solution(self, W=False, call_timer: bool = True):
         if W:
-            self.dm.U_cv[...] = self.compute_conservatives(self.dm.W_cv)
-            self.dm.U_sp[...] = self.compute_sp_from_cv(self.dm.U_cv)
+            self.dm.U_cv[...] = self.compute_conservatives(self.dm.W_cv, call_timer=call_timer)
+            self.dm.U_sp[...] = self.compute_sp_from_cv(self.dm.U_cv, call_timer=call_timer)
         else:
-            self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp)
-            self.dm.W_cv[...] = self.compute_primitives(self.dm.U_cv)
+            self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp, call_timer=call_timer)
+            self.dm.W_cv[...] = self.compute_primitives(self.dm.U_cv, call_timer=call_timer)
 
     def post_update(self):
         """Called after time integrator step: update primitives."""

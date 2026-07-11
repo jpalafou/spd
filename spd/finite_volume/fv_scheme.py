@@ -748,15 +748,15 @@ class FV_Scheme(SemiDiscreteScheme):
     def update_solution(self, dU, ader=False):
         self.U_cv -= dU
 
-    def convert_solution(self, W=False):
+    def convert_solution(self, W=False, call_timer: bool = True):
         if W:
-            U = self.compute_conservatives(self.W_cv)
+            U = self.compute_conservatives(self.W_cv, call_timer=call_timer)
             if self.WB:
                 # W_cv is the full primitive state; store the perturbation.
                 U -= self.dm.U_eq_cv
             self.U_cv[...] = U
         else:
-            self.W_cv[...] = self.compute_primitives(self._full_solution())
+            self.W_cv[...] = self.compute_primitives(self._full_solution(), call_timer=call_timer)
 
     def post_update(self):
         """Called after time integrator step: update primitives."""

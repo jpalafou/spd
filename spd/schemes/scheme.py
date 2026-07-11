@@ -163,7 +163,7 @@ class SemiDiscreteScheme:
         """Create dimension-keyed dictionaries for convenient array access."""
         pass
 
-    def convert_solution(self, W=False):
+    def convert_solution(self, W=False, call_timer: bool = True):
         """Convert between conservative/primitive or point representations."""
         pass
 

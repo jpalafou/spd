@@ -446,9 +446,9 @@ class Simulator:
         if self.scheme is not None:
             self.scheme.create_dicts()
 
-    def convert_solution(self, W=False):
+    def convert_solution(self, W=False, call_timer: bool = True):
         if self.scheme is not None:
-            self.scheme.convert_solution(W=W)
+            self.scheme.convert_solution(W=W, call_timer=call_timer)
 
     # ----------------------------------------------------------------
     # Simulation lifecycle
@@ -470,7 +470,7 @@ class Simulator:
         self._stop_subtimer("total")
         # Convert while arrays are still on the device: the host-side
         # conversion (numpy einsum) is orders of magnitude slower.
-        self.convert_solution()
+        self.convert_solution(call_timer=False)
         self.switch_to_host()
         self.create_dicts()
         if self.rank == 0:
@@ -586,7 +586,7 @@ class Simulator:
         if self.comms.size > 1:
             file += f"_{self.comms.rank}"
         self.dm.W_cv[...] = np.load(file + ".npy")
-        self.convert_solution(W=True)
+        self.convert_solution(W=True, call_timer=False)
         self.noutput += 1
 
     def save_checkpoint(self):

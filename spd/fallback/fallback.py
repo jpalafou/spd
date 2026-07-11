@@ -399,15 +399,15 @@ class FallbackScheme(FV_Scheme):
             return self.primary.compute_primitives_cv(U, call_timer=call_timer)
         return super().compute_primitives_cv(U, call_timer=call_timer)
 
-    def convert_solution(self, W=False):
+    def convert_solution(self, W=False, call_timer: bool = True):
         # With a primary, the solution state (and its well-balanced
         # perturbation/full bookkeeping) is owned by the primary scheme, so
         # delegate.  The inherited FV conversion assumes ``U_cv`` is the
         # perturbation, which is not the case after the SDFB update restores
         # the full state, and would otherwise add the equilibrium twice.
         if self.primary is not None:
-            return self.primary.convert_solution(W=W)
-        return super().convert_solution(W=W)
+            return self.primary.convert_solution(W=W, call_timer=call_timer)
+        return super().convert_solution(W=W, call_timer=call_timer)
 
     def get_solution(self, ader=False):
         if self.primary is not None:
