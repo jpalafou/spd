@@ -123,8 +123,10 @@ class RK_Integrator(Integrator):
             stage_state(target.dm.U_stage, target.get_solution(), terms)
             # Compute dUdt at the current stage
             Ks = target.dm.__getattribute__(f"K_{stage}")
+            target._start_subtimer("f")
             Ks[...] = target.compute_update(target.dm.U_stage, ader=False,
                                          c_l=self.c[stage], dt=dt)
+            target._stop_subtimer("f")
         terms = [
             (target.dm.__getattribute__(f"K_{stage}"), dt * self.b[stage])
             for stage in range(self.nstages)
