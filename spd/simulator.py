@@ -97,6 +97,7 @@ class Simulator:
         self.timer_categories = [
             "take_step",
             "compute_dt",
+            "update_unew",
             "f",
             "compute_dudt",
             "primitive_conservative",

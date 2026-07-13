@@ -113,6 +113,7 @@ class RK_Integrator(Integrator):
             and dt attribute.
         """
         dt = target.dt
+        target._start_subtimer("update_unew")
         for stage in range(self.nstages):
             # Skip zero Butcher entries (exact no-ops).
             terms = [
@@ -133,3 +134,4 @@ class RK_Integrator(Integrator):
         ]
         weighted_sum(target.dm.U_stage, terms)
         target.update_solution(target.dm.U_stage)
+        target._stop_subtimer("update_unew")
