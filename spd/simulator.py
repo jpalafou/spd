@@ -96,6 +96,7 @@ class Simulator:
             "total",
             "take_step",
             "compute_dt",
+            "compute_dudt",
             "primitive_conservative",
             "boundary_conditions",
             "einsum",

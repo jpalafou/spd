@@ -638,7 +638,10 @@ class SD_Scheme(SemiDiscreteScheme):
     def compute_update(self, U, ader=False, prims=False, **kwargs):
         """Compute the spatial RHS: solve faces then compute dU/dt."""
         self.solve_faces(U, prims=prims, ader=ader)
-        return self.compute_dudt(U, ader=ader)
+        self._start_subtimer("compute_dudt")
+        dUdt = self.compute_dudt(U, ader=ader)
+        self._stop_subtimer("compute_dudt")
+        return dUdt
 
     # ----------------------------------------------------------------
     # Solution state management

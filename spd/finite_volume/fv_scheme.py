@@ -725,7 +725,10 @@ class FV_Scheme(SemiDiscreteScheme):
         else:
             self.compute_primitives(U, W=self.W_cv)
         self.compute_fluxes(self.F_fp, self.dt)
-        return self.compute_dudt(U, ader=ader)
+        self._start_subtimer("compute_dudt")
+        dUdt = self.compute_dudt(U, ader=ader)
+        self._stop_subtimer("compute_dudt")
+        return dUdt
 
     def switch_to_finite_volume(self):
         """Switch to finite volume representation."""

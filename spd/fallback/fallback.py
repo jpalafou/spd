@@ -440,7 +440,9 @@ class FallbackScheme(FV_Scheme):
         self.compute_corrected_fluxes(self.dt)
         self._stop_subtimer("mood_loop")
         # Compute dU/dt in FV layout, then reshape to primary (SD) layout
+        self._start_subtimer("compute_dudt")
         dUdt_fv = self.compute_dudt(self.U_cv)
+        self._stop_subtimer("compute_dudt")
         dUdt_sd = self.primary.transpose_to_sd(dUdt_fv)
         dUdt_sd = self.primary.compute_sp_from_cv(dUdt_sd, timer_cat="transpose")
         self.primary.switch_to_high_order(update_solution_points=False)
