@@ -70,6 +70,7 @@ class Simulator:
             ("periodic", "periodic"),
         ),
         verbose=True,
+        profile: bool = False,
         available_time=3600.0,
         init: bool = True,
         folder: str = "outputs/",
@@ -92,8 +93,8 @@ class Simulator:
         self.time_integrator = time_integrator
         self.integrator = None
         self.scheme = None  # Set by subclass or factory
+        self.execution_time = 0.0
         self.timer_categories = [
-            "total",
             "take_step",
             "compute_dt",
             "f",
@@ -147,6 +148,7 @@ class Simulator:
         self.potential = potential
         self.WB = WB
         self.verbose = verbose
+        self.profile = profile
         self.comms = CommHelper(self.ndim)
         self.use_cupy = use_cupy
         # dm is now owned by the scheme; see the dm property below.
@@ -224,10 +226,10 @@ class Simulator:
         return dm
 
     def _start_subtimer(self, cat):
-        self.timer.start(cat, self.use_cupy)
+        (cat == "take_step" or self.profile) and self.timer.start(cat, self.use_cupy)
 
     def _stop_subtimer(self, cat):
-        self.timer.stop(cat, self.use_cupy)
+        (cat == "take_step" or self.profile) and self.timer.stop(cat, self.use_cupy)
 
     # ----------------------------------------------------------------
     # Integrator selection
@@ -466,10 +468,10 @@ class Simulator:
         self.switch_to_device()
         self.create_dicts()
         self.timer = MultiTimer(self.timer_categories)
-        self._start_subtimer("total")
+        self.execution_time = -timer()
 
     def end_sim(self):
-        self._stop_subtimer("total")
+        self.execution_time += timer()
         # Convert while arrays are still on the device: the host-side
         # conversion (numpy einsum) is orders of magnitude slower.
         self.convert_solution(call_timer=False)
@@ -478,19 +480,16 @@ class Simulator:
         if self.rank == 0:
             print(
                 f"t={self.time}, steps taken {self.n_step}, "
-                f"time taken {np.round(self.timer['total'].cum_time,3)}, bzcps = {np.round(self.zone_cycles/1E+9,3)}"
+                f"time taken {np.round(self.execution_time,3)}, bzcps = {np.round(self.zone_cycles/1E+9,3)}"
             )
 
     @property
     def elapsed_time(self):
-        total_timer = self.timer["total"]
-        if total_timer.is_timing:
-            return total_timer.cum_time + timer() - total_timer.start_time
-        return total_timer.cum_time
+        return self.execution_time - timer()
 
     @property
     def cost_per_step(self):
-        cost = 0 if self.n_step == 0 else self.elapsed_time / self.n_step
+        cost = 0 if self.n_step == 0 else self.execution_time / self.n_step
         return cost
 
     @property
