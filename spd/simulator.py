@@ -478,7 +478,7 @@ class Simulator:
         self.convert_solution(call_timer=False)
         self.switch_to_host()
         self.create_dicts()
-        if self.rank == 0:
+        if self.rank == 0 and self.verbose:
             print(
                 f"t={self.time}, steps taken {self.n_step}, "
                 f"time taken {np.round(self.execution_time,3)}, bzcps = {np.round(self.zone_cycles/1E+9,3)}"
@@ -538,7 +538,8 @@ class Simulator:
                     self.dt = dt
                     self.scheme.dt = dt
                 else:
-                    print(f"dt={dt}")
+                    if self.rank == 0 and self.verbose:
+                        print(f"dt={dt}")
                     self._stop_subtimer("take_step")
                     break
             self.status = self.perform_update()
@@ -553,7 +554,8 @@ class Simulator:
                 self.checkpoint = self.comms.reduce_max(self.checkpoint)
                 if self.checkpoint:
                     self.output()
-                    print("Checkpoint")
+                    if self.rank == 0 and self.verbose:
+                        print("Checkpoint")
                     self.noutput -= 1
         self.end_sim()
 
