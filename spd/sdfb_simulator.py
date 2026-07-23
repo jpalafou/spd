@@ -6,6 +6,8 @@ FallbackScheme for robust shock capturing via MUSCL/MUSCL-Hancock
 with trouble detection and flux blending.
 """
 
+from functools import cached_property
+
 import numpy as np
 
 from .simulator import Simulator
@@ -218,6 +220,46 @@ class SPD_Simulator(Simulator):
         self.compute_primitives(U_full, W=self.dm.W_cv)
         self.time += self.dt
         return True
+
+    def compute_dt(self) -> None:
+        """Compute a time step stable for both the high-order and fallback grids."""
+        self.ho_scheme.compute_dt()
+        dt = self.ho_scheme.dt
+
+        if isinstance(self.scheme, FallbackScheme) and "SD" in self.ho_scheme.scheme:
+            if self.ader:
+                raise NotImplementedError(
+                    "SDFB fallback timestep limiting is only implemented for "
+                    "Runge-Kutta integrators."
+                )
+
+            W = self.ho_scheme.dm.W_cv
+            c_s = self.equations.compute_cs(
+                W[self._p_], W[self._d_], self.gamma, self.min_c2
+            )
+            c = c_s * self.ndim
+            for vel in self.vels[: self.ndim]:
+                c += np.abs(W[vel])
+            c_max = np.max(c)
+
+            h = self._fallback_h_min
+            dt_fb = h / c_max
+            dt_fb = self.comms.reduce_min(dt_fb).item()
+            if self.viscosity and self.nu > 0:
+                dt_fb = min(dt_fb, h**2 / self.nu * 0.25)
+            dt = min(dt, self.cfl_coeff * dt_fb)
+
+        self.dt = dt
+        self.ho_scheme.dt = dt
+        self.lo_scheme.dt = dt
+
+    @cached_property
+    def _fallback_h_min(self) -> float:
+        """Smallest FV fallback subcell spacing on the static SD mesh."""
+        xp = self.ho_scheme.dm.xp
+        return min(
+            float(xp.min(self.ho_scheme.h_fp[dim]).item()) for dim in self.dims
+        )
 
     # ------------------------------------------------------------------
     # Simulation lifecycle (switch both scheme dms)
