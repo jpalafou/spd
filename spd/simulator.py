@@ -204,6 +204,8 @@ class Simulator:
 
         self.noutput = 0
 
+        self.bonus_snapshot_routine = lambda sim: None
+
 
     # ----------------------------------------------------------------
     # Data manager (owned by the scheme)
@@ -574,6 +576,7 @@ class Simulator:
         if self.comms.size > 1:
             file += f"_{self.comms.rank}"
         np.save(file, self.dm.W_cv)
+        self.bonus_snapshot_routine(self)
         self.outputs.append([self.time, self.noutput])
         if self.rank == 0:
             np.savetxt(folder + "/outputs.out", self.outputs)
