@@ -47,6 +47,8 @@ class SPD_Simulator(Simulator):
         Bounds for PAD.
     godunov : bool
         Use pure Godunov (no blending).
+    second_fallback : bool
+        Enable a second fallback to first-order FV.
     limiting_variables : list
         Variable indices for NAD (default: density and pressure).
     predictor : bool
@@ -72,6 +74,7 @@ class SPD_Simulator(Simulator):
         max_rho: float = 1e10,
         min_P: float = 1e-10,
         godunov: bool = False,
+        second_fallback: bool = False,
         limiting_variables: list = None,
         predictor: bool = False,
         riemann_solver_sd: str = "hllc",
@@ -145,11 +148,23 @@ class SPD_Simulator(Simulator):
                 scheme=fallback,
                 **self._fb_params,
             )
+            if second_fallback:
+                self.lo_scheme.fo_scheme = FallbackScheme(
+                    self,
+                    primary=self.ho_scheme,
+                    riemann_solver=riemann_solver_fv,
+                    slope_limiter=slope_limiter,
+                    scheme="first-order",
+                    **self._fb_params,
+                )
+            else:
+                self.lo_scheme.fo_scheme = None
             self.ader_update = self.lo_scheme.ader_update
             self.scheme = self.lo_scheme
         else:
             # Use a generic semi-discrete scheme for fallback
             self.lo_scheme = SemiDiscreteScheme(self)
+            self.lo_scheme.fo_scheme = None
             self.ader_update = self.ho_scheme.ader_update
             self.scheme = self.ho_scheme
             
@@ -170,11 +185,13 @@ class SPD_Simulator(Simulator):
         return scheme.dm
 
     def _initialize(self):
-        """Initialize both SD and Fallback schemes."""
+        """Initialize SD, fallback, and first-order fallback schemes."""
         # Initialize the SD scheme (primary)
         self.ho_scheme.initialize()
         # Initialize the Fallback (FV arrays + FB arrays)
         self.lo_scheme.initialize()
+        if self.lo_scheme.fo_scheme is not None:
+            self.lo_scheme.fo_scheme.initialize()
 
         self.create_dicts()
 
@@ -185,6 +202,8 @@ class SPD_Simulator(Simulator):
     def create_dicts(self):
         self.ho_scheme.create_dicts()
         self.lo_scheme.create_dicts()
+        if self.lo_scheme.fo_scheme is not None:
+            self.lo_scheme.fo_scheme.create_dicts()
 
     # ------------------------------------------------------------------
     # Boundary initialization
@@ -193,6 +212,8 @@ class SPD_Simulator(Simulator):
     def init_Boundaries(self):
         self.ho_scheme.init_Boundaries()
         self.lo_scheme.init_Boundaries()
+        if self.lo_scheme.fo_scheme is not None:
+            self.lo_scheme.fo_scheme.init_Boundaries()
 
     # ------------------------------------------------------------------
     # perform_update
@@ -252,6 +273,8 @@ class SPD_Simulator(Simulator):
         self.dt = dt
         self.ho_scheme.dt = dt
         self.lo_scheme.dt = dt
+        if self.lo_scheme.fo_scheme is not None:
+            self.lo_scheme.fo_scheme.dt = dt
 
     @cached_property
     def _fallback_h_min(self) -> float:
@@ -268,10 +291,14 @@ class SPD_Simulator(Simulator):
     def switch_to_device(self):
         self.ho_scheme.dm.switch_to(CupyLocation.device)
         self.lo_scheme.dm.switch_to(CupyLocation.device)
+        if self.lo_scheme.fo_scheme is not None:
+            self.lo_scheme.fo_scheme.dm.switch_to(CupyLocation.device)
 
     def switch_to_host(self):
         self.ho_scheme.dm.switch_to(CupyLocation.host)
         self.lo_scheme.dm.switch_to(CupyLocation.host)
+        if self.lo_scheme.fo_scheme is not None:
+            self.lo_scheme.fo_scheme.dm.switch_to(CupyLocation.host)
 
     # Potential and well-balanced equilibrium are initialized by each scheme
     # in its own ``initialize`` (SD_Scheme / FV_Scheme), so there is no
@@ -292,7 +319,7 @@ class SPD_Simulator(Simulator):
 
     # Delegate to sd_scheme or fallback for backward compat
     def __getattr__(self, name):
-        if name.startswith('_') or name in ('scheme', 'ho_scheme', 'lo_scheme'):
+        if name.startswith('_') or name in ('scheme', 'ho_scheme', 'lo_scheme', 'fo_scheme'):
             raise AttributeError(name)
         d = object.__getattribute__(self, '__dict__')
         ho = d.get('ho_scheme')
