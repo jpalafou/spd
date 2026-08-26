@@ -14,7 +14,7 @@ import numpy as np
 
 from spd.schemes.scheme import SemiDiscreteScheme
 from spd.finite_volume.fv_scheme import FV_Scheme
-from .trouble_detection import detect_troubles
+from .trouble_detection import apply_blending, detect_troubles
 from spd.numerics.slicing import cut, indices, indices2, crop_fv
 from spd.numerics.polynomials import quadrature_mean
 from spd.runtime.gpu import CUPY_AVAILABLE, is_gpu_array
@@ -83,6 +83,10 @@ class FallbackScheme(FV_Scheme):
         Bounds for PAD checks.
     godunov : bool
         If True, use pure Godunov (no blending, theta=1 everywhere).
+    nrevmax : int
+        Maximum number of MOOD revisions.
+    cascade_length : int
+        Number of schemes in the cascade, including the high-order scheme.
     limiting_variables : list
         Variable indices used for NAD check (default: density and pressure).
     """
@@ -105,8 +109,16 @@ class FallbackScheme(FV_Scheme):
         max_rho=1e10,
         min_P=1e-10,
         godunov=False,
+        nrevmax=1,
+        cascade_length=2,
         limiting_variables=None,
     ):
+        nrevmax = int(nrevmax)
+        cascade_length = int(cascade_length)
+        if nrevmax < 1:
+            raise ValueError("nrevmax must be at least 1")
+        if cascade_length not in (2, 3):
+            raise ValueError("cascade_length must be 2 or 3")
         super().__init__(
             sim,
             riemann_solver=riemann_solver,
@@ -127,6 +139,8 @@ class FallbackScheme(FV_Scheme):
         self.max_rho = max_rho
         self.min_P = min_P
         self.godunov = godunov
+        self.nrevmax = nrevmax
+        self.cascade_length = cascade_length
         # Default: check density and pressure.
         self.limiting_variables = (
             limiting_variables
@@ -235,6 +249,7 @@ class FallbackScheme(FV_Scheme):
     def fb_arrays(self):
         """Allocate arrays used in trouble detection and flux blending."""
         self.dm.troubles = self.array(1)
+        self.dm.cascade_idx = np.zeros_like(self.dm.troubles, dtype=np.int32)
         self.dm.theta = self.array(1, ngh=self.Nghc)
         for dim in self.dims:
             self.dm.__setattr__(
@@ -347,40 +362,149 @@ class FallbackScheme(FV_Scheme):
         
     def correct_fluxes(self):
         """Blend high-order (primary) and low-order (MUSCL) fluxes."""
+        if self.godunov:
+            for dim in self.dims:
+                self.dm.__getattribute__(f"affected_faces_{dim}")[...] = 1
+        else:
+            trouble, theta = self.set_theta_from_troubles()
+            if self.blending:
+                apply_blending(self, trouble, theta)
+            self.update_affected_faces_from_theta()
         for dim in self.dims:
-            if self.godunov:
-                theta = 1
-            else:
-                theta = self.dm.__getattribute__(f"affected_faces_{dim}")
+            theta = self.dm.__getattribute__(f"affected_faces_{dim}")
             self.F_fp[dim] = blend_fluxes(
                 self.F_fp[dim], self.F_fp_FB[dim], theta
+            )
+
+    def update_cascade_idx(self):
+        """Update cascade levels from the latest trouble detection."""
+        cascade_idx = self.dm.cascade_idx
+        previous = cascade_idx.copy()
+        if self.godunov:
+            cascade_idx[...] = 1
+        else:
+            cascade_idx[...] += self.dm.troubles.astype(
+                cascade_idx.dtype, copy=False
+            )
+            self.dm.xp.minimum(
+                cascade_idx, self.cascade_length - 1, out=cascade_idx
+            )
+        return bool(self.dm.xp.any(cascade_idx != previous).item())
+
+    def reset_cascade_idx(self):
+        """Start a cascade from the high-order scheme everywhere."""
+        self.dm.cascade_idx[...] = 0
+
+    def set_theta_from_troubles(self):
+        """Set cell weights from the latest trouble field."""
+        self.dm.M[...] = 0
+        self.fill_active_region(self.dm.troubles)
+        self.Boundaries_scalar(self.dm.M, call_timer=False)
+        trouble = self.dm.M[0]
+        theta = self.dm.theta[0]
+        theta[...] = trouble
+        return trouble, theta
+
+    def set_theta_from_cascade_idx(self):
+        """Set cell weights from the cascade index."""
+        self.dm.M[...] = 0
+        self.fill_active_region(self.dm.cascade_idx)
+        self.Boundaries_scalar(self.dm.M, call_timer=False)
+        cascade_idx = self.dm.M[0]
+        theta = self.dm.theta[0]
+        theta[...] = cascade_idx
+        return cascade_idx, theta
+
+    def update_affected_faces_from_theta(self):
+        """Update face weights from the current cell weights."""
+        ngh = self.Nghc
+        crop = lambda start, end, idim: crop_fv(start, end, idim, self.ndim, ngh)
+        theta = self.dm.theta[0]
+        for dim in self.dims:
+            idim = self.dims[dim]
+            affected_faces = self.dm.__getattribute__(f"affected_faces_{dim}")
+            affected_faces[...] = 0
+            affected_faces[...] = np.maximum(
+                theta[crop(ngh - 1, -ngh, idim)],
+                theta[crop(ngh, -(ngh - 1), idim)],
+            )
+
+    def update_affected_faces_from_cascade_idx(self):
+        """Broadcast cascade levels to faces."""
+        self.set_theta_from_cascade_idx()
+        self.update_affected_faces_from_theta()
+
+    def compute_fallback_fluxes(self, dt):
+        """Compute the fallback flux arrays used by the active cascade."""
+        self.compute_fluxes(self.F_fp_FB, dt, call_timer=False)
+        if self.fo_scheme is not None and self.nrevmax > 1:
+            self.fo_scheme.working_arrays()
+            self.fo_scheme.compute_fluxes(self.fo_scheme.F_fp, dt, call_timer=False)
+
+    def assign_fluxes_from_cascade_idx(self):
+        """Select discrete cascade fluxes with face masks."""
+        xp = self.dm.xp
+        self.update_affected_faces_from_cascade_idx()
+        for dim in self.dims:
+            mask = self.dm.__getattribute__(f"affected_faces_{dim}") == 1
+            self.F_fp[dim] = xp.where(mask, self.F_fp_FB[dim], self.F_fp[dim])
+
+        if self.fo_scheme is None:
+            return
+
+        for dim in self.dims:
+            mask = self.dm.__getattribute__(f"affected_faces_{dim}") == 2
+            self.F_fp[dim] = xp.where(
+                mask, self.fo_scheme.F_fp[dim], self.F_fp[dim]
             )
 
     def compute_corrected_fluxes(self, dt):
         """
         Compute the corrected solution with trouble detection and blending.
 
-        1. Tentatively apply high-order fluxes (already in F_fp).
+        1. Tentatively apply the current fluxes.
         2. Detect troubled cells.
-        3. Compute MUSCL fluxes into F_fp_FB (not overwriting F_fp/HO).
-        4. Blend F_fp (HO) and F_fp_FB (MUSCL) based on trouble indicators.
+        3. Use direct trouble blending for the one-revision MUSCL case,
+           otherwise revise through the cascade index.
         """
-        self._start_subtimer("candidate_solution")
         self.W_cv[...] = self.primary.compute_primitives_cv(
             self.U_cv, call_timer=False
         )
-        # Tentative HO update for trouble detection; F_fp still holds HO fluxes
-        self.apply_fluxes(dt)
-        self._stop_subtimer("candidate_solution")
-        self.detect_troubles()
-        # Redirect compute_fluxes output to F_fp_FB so HO fluxes in F_fp survive
-        self._start_subtimer("fallback_fluxes")
-        self.compute_fluxes(self.F_fp_FB, dt, call_timer=False)
-        self._stop_subtimer("fallback_fluxes")
-        # Blend: F_fp = HO, F_fp_FB = MUSCL
-        self._start_subtimer("assign_fluxes")
-        self.correct_fluxes()
-        self._stop_subtimer("assign_fluxes")
+
+        if self.nrevmax == 1 and self.cascade_length == 2:
+            self._start_subtimer("candidate_solution")
+            self.apply_fluxes(dt)
+            self._stop_subtimer("candidate_solution")
+            self.detect_troubles()
+            self._start_subtimer("fallback_fluxes")
+            self.compute_fluxes(self.F_fp_FB, dt, call_timer=False)
+            self._stop_subtimer("fallback_fluxes")
+            self._start_subtimer("assign_fluxes")
+            self.correct_fluxes()
+            self._stop_subtimer("assign_fluxes")
+            return
+
+        self.reset_cascade_idx()
+        fallback_fluxes_ready = False
+
+        for _ in range(self.nrevmax):
+            self._start_subtimer("candidate_solution")
+            self.apply_fluxes(dt)
+            self._stop_subtimer("candidate_solution")
+            self.detect_troubles()
+
+            if not self.update_cascade_idx():
+                break
+
+            if not fallback_fluxes_ready:
+                self._start_subtimer("fallback_fluxes")
+                self.compute_fallback_fluxes(dt)
+                self._stop_subtimer("fallback_fluxes")
+                fallback_fluxes_ready = True
+
+            self._start_subtimer("assign_fluxes")
+            self.assign_fluxes_from_cascade_idx()
+            self._stop_subtimer("assign_fluxes")
 
     # ----------------------------------------------------------------
     # Solution state delegation to primary (for RK integrator)

@@ -260,22 +260,6 @@ def detect_troubles(self: Simulator):
         )
 
     #self.n_troubles += self.dm.troubles.sum()
-    self.dm.M[...] = 0
-    self.fill_active_region(self.dm.troubles)
-    self.Boundaries_scalar(self.dm.M, call_timer=False)
-    trouble = self.dm.M[0]
-    self.dm.theta[0][...] = trouble
-    theta = self.dm.theta[0]
-
-    if self.blending:
-        apply_blending(self,trouble,theta)
-
-    for dim in self.dims:
-        idim = self.dims[dim]
-        affected_faces = self.dm.__getattribute__(f"affected_faces_{dim}")
-        affected_faces[...] = 0
-        affected_faces[...] = np.maximum(theta[crop(ngh-1,-ngh,idim)],theta[crop(ngh,-(ngh-1),idim)])
-
 def neighborhood_extrema(M, ndim, neighbors):
     """Per-cell (max, min) over the neighborhood of the trailing ndim axes.
 

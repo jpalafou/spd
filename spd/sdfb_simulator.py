@@ -49,6 +49,8 @@ class SPD_Simulator(Simulator):
         Use pure Godunov (no blending).
     second_fallback : bool
         Enable a second fallback to first-order FV.
+    nrevmax : int
+        Maximum number of MOOD revisions per RK stage.
     limiting_variables : list
         Variable indices for NAD (default: density and pressure).
     predictor : bool
@@ -75,6 +77,7 @@ class SPD_Simulator(Simulator):
         min_P: float = 1e-10,
         godunov: bool = False,
         second_fallback: bool = False,
+        nrevmax: int = 1,
         limiting_variables: list = None,
         predictor: bool = False,
         riemann_solver_sd: str = "hllc",
@@ -104,6 +107,9 @@ class SPD_Simulator(Simulator):
             min_rho=min_rho,
             max_rho=max_rho,
             min_P=min_P,
+            godunov=godunov,
+            nrevmax=nrevmax,
+            cascade_length=3 if second_fallback else 2,
             limiting_variables=limiting_variables,
         )
 
