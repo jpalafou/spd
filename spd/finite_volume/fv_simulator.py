@@ -15,7 +15,7 @@ from spd.numerics.polynomials import solution_points, flux_points
 class FV_Simulator(Simulator):
     """
     Simulator using Finite Volume spatial discretization with
-    MUSCL / MUSCL-Hancock reconstruction.
+    first-order, MUSCL, or MUSCL-Hancock reconstruction.
 
     Creates an FV_Scheme internally and delegates all spatial
     operations to it while the Simulator handles time integration,
@@ -27,8 +27,9 @@ class FV_Simulator(Simulator):
         Riemann solver name ('llf', 'hllc', 'lhllc').
     slope_limiter : str
         Slope limiter name ('minmod', 'moncen').
-    predictor : bool
-        If True use MUSCL-Hancock, else plain MUSCL.
+    scheme : str
+        Reconstruction scheme: ``"first-order"``, ``"MUSCL"``, or
+        ``"MUSCL-Hancock"``.
     *args, **kwargs
         Forwarded to Simulator.__init__().
     """

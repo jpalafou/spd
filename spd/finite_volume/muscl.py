@@ -84,6 +84,14 @@ def reconstruct_faces(self, dim: str, idim: int) -> None:
     self.ML_fp[dim][...] = self.interpolate_L(self.dm.M, S, idim)
 
 
+def reconstruct_first_order_faces(self, dim: str, idim: int) -> None:
+    """Fill ML_fp/MR_fp with piecewise-constant face states."""
+    ngh = self.Nghc
+    crop = lambda start, end: crop_fv(start, end, idim, self.ndim, ngh)
+    self.ML_fp[dim][...] = self.dm.M[crop(1, -2)]
+    self.MR_fp[dim][...] = self.dm.M[crop(2, -1)]
+
+
 def reconstruct_faces_gpu(self, dim: str, idim: int) -> None:
     """Fill ML_fp/MR_fp for *dim* with the fused GPU reconstruction."""
     ngh = self.Nghc
@@ -198,6 +206,20 @@ class Slope_limiter:
         """
         dMh = self.compute_gradients(M,h_cv,h_fp,idim)
         return 0.5*dMh*h_fp[cut(1,-1,idim)] 
+
+
+def First_Order_fluxes(self: Simulator,
+                       F: dict,
+                       dt: float,
+                       prims=True,
+                       call_timer: bool = True)->None:
+    """
+    Returns first-order Godunov fluxes for conserved variables.
+    """
+    for dim in self.dims:
+        idim = self.dims[dim]
+        reconstruct_first_order_faces(self, dim, idim)
+        self.solve_riemann_problem(dim, F[dim], prims, call_timer=call_timer)
     
 def MUSCL_fluxes(self: Simulator,
                  F: dict,

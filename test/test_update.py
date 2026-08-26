@@ -61,3 +61,16 @@ def test_fv_rk_update(p,N,scheme):
     """Test FV with RK (default for FV)."""
     s = FV_Simulator(p=p, N=N, use_cupy=False, scheme=scheme)
     s.perform_iterations(1)
+
+
+@pytest.mark.parametrize("N" , [(N,),(N,N),(N,N,N)])
+def test_fv_first_order_rk_update(N):
+    """Test first-order FV with RK."""
+    s = FV_Simulator(
+        p=1,
+        N=N,
+        use_cupy=False,
+        scheme="first-order",
+        time_integrator="rk1",
+    )
+    s.perform_iterations(1)

@@ -1,8 +1,8 @@
 """
 Finite Volume semi-discrete scheme.
 
-Cell-centered finite volume spatial discretization using MUSCL
-or MUSCL-Hancock reconstruction with slope limiters.
+Cell-centered finite volume spatial discretization using first-order,
+MUSCL, or MUSCL-Hancock reconstruction.
 Computes the spatial operator L(U) = -div(F) for the method-of-lines
 formulation dU/dt = L(U).
 """
@@ -22,8 +22,8 @@ class FV_Scheme(SemiDiscreteScheme):
     """
     Finite Volume semi-discrete spatial scheme.
 
-    Uses cell-averaged values with MUSCL or MUSCL-Hancock reconstruction
-    to compute interface fluxes via a Riemann solver.
+    Uses cell-averaged values with first-order, MUSCL, or MUSCL-Hancock
+    reconstruction to compute interface fluxes via a Riemann solver.
 
     Parameters
     ----------
@@ -33,9 +33,9 @@ class FV_Scheme(SemiDiscreteScheme):
         Name of the Riemann solver ('llf', 'hllc', 'lhllc').
     slope_limiter : str
         Name of the slope limiter ('minmod', 'moncen').
-    predictor : bool
-        If True, use MUSCL-Hancock (predictor-corrector).
-        If False, use plain MUSCL.
+    scheme : str
+        Reconstruction scheme: ``"first-order"``, ``"MUSCL"``, or
+        ``"MUSCL-Hancock"``.
     """
 
     def __init__(
@@ -55,7 +55,9 @@ class FV_Scheme(SemiDiscreteScheme):
             self.riemann_solver = rs1d(riemann_solver, equations).solver
         self.slope_limiter = muscl.Slope_limiter(slope_limiter)
         self.scheme = scheme
-        if scheme == "MUSCL":
+        if scheme == "first-order":
+            self.fluxes = muscl.First_Order_fluxes
+        elif scheme == "MUSCL":
             self.fluxes = muscl.MUSCL_fluxes
         elif scheme == "MUSCL-Hancock":
             self.fluxes = muscl.MUSCL_Hancock_fluxes
