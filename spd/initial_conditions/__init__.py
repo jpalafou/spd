@@ -49,6 +49,19 @@ sine_wave = parametrized(ic3d.sine_wave)
 # 1d-only.
 sod = parametrized(ic1d.sod_shock_tube)
 
+
+def decaying_isotropic_turbulence(**params):
+    def init_fct(xyz, case):
+        if xyz.shape[0] == 1:
+            return ic1d.decaying_isotropic_turbulence(xyz, case, **params)
+        if xyz.shape[0] == 2:
+            return ic2d.decaying_isotropic_turbulence(xyz, case, **params)
+        raise NotImplementedError("decaying_isotropic_turbulence is implemented in 1D and 2D.")
+
+    init_fct.__name__ = "decaying_isotropic_turbulence"
+    init_fct.keywords = params
+    return init_fct
+
 # 2d-only.
 RTI = parametrized(ic2d.RTI)
 KH_instability = parametrized(ic2d.KH_instability)
@@ -63,6 +76,7 @@ __all__ = [
     "step_function",
     "sine_wave",
     "sod",
+    "decaying_isotropic_turbulence",
     "RTI",
     "KH_instability",
     "double_mach_reflection",

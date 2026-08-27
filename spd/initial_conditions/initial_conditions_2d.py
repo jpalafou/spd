@@ -95,6 +95,133 @@ def sine_wave(xy: np.ndarray,case: int, A=0.125, vx=1, vy=1, P=1):
     else:
         return np.zeros(x.shape)
 
+
+def decaying_isotropic_turbulence(
+    xy: np.ndarray,
+    case: int,
+    M: float = 10.0,
+    slope: float = -4.0,
+    seed: int = None,
+    solenoidal: bool = True,
+    fine_factor: int = 1,
+    seed_fine: int = None,
+    xlim: tuple = (0.0, 1.0),
+    ylim: tuple = (0.0, 1.0),
+) -> np.ndarray:
+    x = xy[0]
+    y = xy[1]
+
+    if case == 0 or case == 4:
+        return np.ones_like(x, dtype=float)
+    if case not in (1, 2, 3):
+        return np.zeros(x.shape)
+    if case == 3:
+        return np.zeros_like(x, dtype=float)
+
+    if x.ndim >= 6:
+        n_y_total, n_x_total, n_y_sub, n_x_sub = x.shape[:4]
+        tail0 = (0,) * (x.ndim - 4)
+        x_line = x[(0, slice(None), 0, 0) + tail0]
+        y_line = y[(slice(None), 0, 0, 0) + tail0]
+    else:
+        n_y_total, n_x_total = x.shape[:2]
+        n_y_sub = n_x_sub = 1
+        tail0 = (0,) * (x.ndim - 2)
+        x_line = x[(0, slice(None)) + tail0]
+        y_line = y[(slice(None), 0) + tail0]
+
+    active_x = (x_line >= xlim[0]) & (x_line < xlim[1])
+    active_y = (y_line >= ylim[0]) & (y_line < ylim[1])
+    if not np.any(active_x):
+        active_x = np.ones(n_x_total, dtype=bool)
+    if not np.any(active_y):
+        active_y = np.ones(n_y_total, dtype=bool)
+
+    n_x = int(np.count_nonzero(active_x)) * n_x_sub
+    n_y = int(np.count_nonzero(active_y)) * n_y_sub
+    offset_x = int(np.argmax(active_x)) * n_x_sub
+    offset_y = int(np.argmax(active_y)) * n_y_sub
+
+    if fine_factor < 1 or n_x % fine_factor != 0 or n_y % fine_factor != 0:
+        raise ValueError("fine_factor must be a positive divisor of the number of cells.")
+
+    hx = (xlim[1] - xlim[0]) / n_x if n_x > 1 else 1.0
+    hy = (ylim[1] - ylim[0]) / n_y if n_y > 1 else 1.0
+
+    def spectral_velocities(shape, spacings, this_seed):
+        rng = np.random.RandomState(None if this_seed is None else int(this_seed))
+        kx = np.fft.fftfreq(shape[0], d=spacings[0])
+        ky = np.fft.fftfreq(shape[1], d=spacings[1])
+        KX = kx[:, None]
+        KY = ky[None, :]
+        K2 = KX * KX + KY * KY
+        K = np.sqrt(K2)
+
+        env = np.zeros_like(K)
+        nonzero = K > 0.0
+        if np.any(nonzero):
+            env[nonzero] = (K[nonzero] / K[nonzero].min()) ** ((slope - 1.0) / 2.0)
+
+        Vx = np.fft.fftn(rng.standard_normal(shape)) * env
+        Vy = np.fft.fftn(rng.standard_normal(shape)) * env
+
+        if solenoidal:
+            invK2 = np.divide(1.0, K2, out=np.zeros_like(K2), where=K2 > 0.0)
+            kdotV = KX * Vx + KY * Vy
+            Vx -= KX * kdotV * invK2
+            Vy -= KY * kdotV * invK2
+
+        Vx[0, 0] = 0.0
+        Vy[0, 0] = 0.0
+        return Vx, Vy
+
+    if fine_factor > 1:
+        seed_fine = seed if seed_fine is None else seed_fine
+        coarse_shape = (n_x // fine_factor, n_y // fine_factor)
+        Vx_c, Vy_c = spectral_velocities(coarse_shape, (hx * fine_factor, hy * fine_factor), seed)
+        vx_c = np.fft.ifftn(Vx_c).real
+        vy_c = np.fft.ifftn(Vy_c).real
+
+        ones = np.ones((fine_factor, fine_factor), dtype=float)
+        Vx = np.fft.fftn(np.kron(vx_c, ones))
+        Vy = np.fft.fftn(np.kron(vy_c, ones))
+
+        Vx_f, Vy_f = spectral_velocities((n_x, n_y), (hx, hy), seed_fine)
+        kx = np.fft.fftfreq(n_x, d=hx)
+        ky = np.fft.fftfreq(n_y, d=hy)
+        K = np.sqrt(kx[:, None] ** 2 + ky[None, :] ** 2)
+        high_k_mask = K > 1.0 / (2.0 * max(hx, hy) * fine_factor)
+        Vx += Vx_f * high_k_mask
+        Vy += Vy_f * high_k_mask
+    else:
+        Vx, Vy = spectral_velocities((n_x, n_y), (hx, hy), seed)
+
+    vx = np.fft.ifftn(Vx).real
+    vy = np.fft.ifftn(Vy).real
+    u_rms = float(np.sqrt(np.mean(vx * vx + vy * vy)))
+    if u_rms > 0.0:
+        vx *= M / u_rms
+        vy *= M / u_rms
+
+    if x.ndim >= 6:
+        y_idx = (
+            np.arange(n_y_total)[:, None, None, None] * n_y_sub
+            + np.arange(n_y_sub)[None, None, :, None]
+            - offset_y
+        ) % n_y
+        x_idx = (
+            np.arange(n_x_total)[None, :, None, None] * n_x_sub
+            + np.arange(n_x_sub)[None, None, None, :]
+            - offset_x
+        ) % n_x
+        out = (vx if case == 1 else vy)[x_idx, y_idx]
+        return np.broadcast_to(out[(Ellipsis,) + (None,) * (x.ndim - 4)], x.shape)
+
+    y_idx = (np.arange(n_y_total)[:, None] - offset_y) % n_y
+    x_idx = (np.arange(n_x_total)[None, :] - offset_x) % n_x
+    out = (vx if case == 1 else vy)[x_idx, y_idx]
+    return np.broadcast_to(out[(Ellipsis,) + (None,) * (x.ndim - 2)], x.shape)
+
 def RTI(
     xy: np.ndarray,
     case: int,
