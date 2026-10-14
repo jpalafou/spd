@@ -134,12 +134,14 @@ def compute_viscous_fluxes(
     v1 = vels[0]
     dW1 = dWs[v1 - 1]
     F[v1] = 2 * dW1[v1] - beta * dW1[v1]
-    F[_p_] = W[v1] * F[v1]
     for vel in vels[1:]:
         idim = vel - 1
         dW = dWs[idim] if idim in dWs else np.zeros_like(dW1)
         F[v1] -= beta * dW[vel]
         F[vel] = dW1[vel] + dW[v1]
+    # Form stress work after the transverse corrections to the normal stress.
+    F[_p_] = W[v1] * F[v1]
+    for vel in vels[1:]:
         F[_p_] += W[vel] * F[vel]
     if npassive > 0:
         _ps_ = _p_ + 1
