@@ -126,7 +126,6 @@ class SPD_Simulator(Simulator):
                 self.n[dim] = 1
                 setattr(self, f"n{dim}", 1)
             self.ho_scheme = FV_Scheme(self, riemann_solver=riemann_solver_fv)
-            self.cfl_coeff /= self.p + 1
         else:
             raise ValueError(f"Invalid scheme: {scheme}")
 
