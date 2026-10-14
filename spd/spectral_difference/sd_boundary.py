@@ -38,7 +38,8 @@ def apply_interfaces(self: SD_Simulator,
 def store_BC(self: SD_Simulator,
              BC_array: np.ndarray,
              M: np.ndarray,
-             dim: str) -> None:
+             dim: str,
+             gradient_dim=None) -> None:
     """
     Stores the solution at flux points for the extremes of the domain
     These boundary arrays can then be communicated between domains
@@ -51,6 +52,9 @@ def store_BC(self: SD_Simulator,
         elif BC[side] == "reflective":
             BC_array[side] = M[indices2(-side,self.ndim,idim)]
             BC_array[side,self.vels[idim]] *= -1
+            if gradient_dim == dim:
+                # A normal derivative reverses the reflected field's parity.
+                BC_array[side] *= -1
         elif BC[side] == "gradfree":
             BC_array[side] = M[indices2(-side,self.ndim,idim)]
         elif BC[side] == "ic":
@@ -155,9 +159,9 @@ def Boundaries(self: SD_Simulator,
     apply_BC(self,dim)
 
 
-def Boundaries_sd(self: SD_Simulator, M: np.ndarray, dim: str):
+def Boundaries_sd(self: SD_Simulator, M: np.ndarray, dim: str, gradient_dim=None):
     """Populate interior and boundary traces for the SD diffusion operator."""
-    store_BC(self, self.BC_fp[dim], M, dim)
+    store_BC(self, self.BC_fp[dim], M, dim, gradient_dim=gradient_dim)
     store_interfaces(self, M, dim)
     self.Comms_fp(M, dim)
     apply_BC(self, dim)

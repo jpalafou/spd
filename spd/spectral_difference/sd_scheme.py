@@ -525,7 +525,9 @@ class SD_Scheme(SemiDiscreteScheme):
                 dW_fp[idim] = self.compute_fp_from_sp(
                     dW_sp[idim], dim, ader=ader
                 )
-                bc.Boundaries_sd(self, dW_fp[idim], dim)
+                bc.Boundaries_sd(
+                    self, dW_fp[idim], dim, gradient_dim=self.idims[idim]
+                )
                 dW = self.MR_fp[dim]
                 bc.apply_interfaces(self, dW, dW_fp[idim], dim)
             self.F_fp[dim][...] -= self.compute_viscous_fluxes(
