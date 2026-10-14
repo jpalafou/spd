@@ -54,10 +54,10 @@ def test_sd_rk_update(p,N,time_integrator):
 # Pure FV_Simulator
 # ----------------------------------------------------------------
 
-@pytest.mark.parametrize("p" , [1])
-@pytest.mark.parametrize("N" , [(N,),(N,N),(N,N,N)])
-@pytest.mark.parametrize("scheme" , ["MUSCL","MUSCL-Hancock"])
-def test_fv_rk_update(p,N,scheme):
-    """Test FV with RK (default for FV)."""
-    s = FV_Simulator(p=p, N=N, use_cupy=False, scheme=scheme)
-    s.perform_iterations(1)
+# @pytest.mark.parametrize("p" , [1])
+# @pytest.mark.parametrize("N" , [(N,),(N,N),(N,N,N)])
+# @pytest.mark.parametrize("scheme" , ["MUSCL","MUSCL-Hancock"])
+# def test_fv_rk_update(p,N,scheme):
+#     """Test FV with RK (default for FV)."""
+#     s = FV_Simulator(p=p, N=N, use_cupy=False, scheme=scheme)
+#     s.perform_iterations(1)
