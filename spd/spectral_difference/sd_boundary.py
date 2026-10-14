@@ -153,3 +153,11 @@ def Boundaries(self: SD_Simulator,
     store_BC(self,self.BC_fp[dim],M,dim)
     self.Comms_fp(M,dim)
     apply_BC(self,dim)
+
+
+def Boundaries_sd(self: SD_Simulator, M: np.ndarray, dim: str):
+    """Populate interior and boundary traces for the SD diffusion operator."""
+    store_BC(self, self.BC_fp[dim], M, dim)
+    store_interfaces(self, M, dim)
+    self.Comms_fp(M, dim)
+    apply_BC(self, dim)
