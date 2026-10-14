@@ -9,6 +9,7 @@ dependencies = [
     "matplotlib",
     "mpmath",
     "numpy",
+    "superfv",
 ]
 
 [project.optional-dependencies]

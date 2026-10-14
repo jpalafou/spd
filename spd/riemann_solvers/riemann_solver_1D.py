@@ -9,7 +9,12 @@ class Riemann_solver_1D:
         self.name = name
         self.soe = soe
         self.equations = hydro if soe == "hydro" else mhd
-        self.solver = self.riemann_solver(self.__getattribute__(name))
+        if soe == "hydro" and name in ("hllc", "llf"):
+            from .superfv_adapter import superfv_riemann_solver
+
+            self.solver = superfv_riemann_solver(name)
+        else:
+            self.solver = self.riemann_solver(self.__getattribute__(name))
 
     def riemann_solver(self,solver):
         def solve(M_L: np.ndarray,
