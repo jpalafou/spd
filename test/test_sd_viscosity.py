@@ -14,7 +14,7 @@ def shear_flow(mesh, var):
     return np.zeros_like(mesh[0])
 
 
-@pytest.mark.parametrize("time_integrator", ["ader"])
+@pytest.mark.parametrize("time_integrator", ["ader", "rk2"])
 def test_periodic_viscous_shear(time_integrator):
     sim = SD_Simulator(
         init_fct=shear_flow, N=(4, 3), p=2, viscosity=True, nu=0.01,
