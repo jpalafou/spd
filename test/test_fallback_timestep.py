@@ -26,7 +26,9 @@ def test_fallback_subcell_timestep(p, nu, time_integrator):
         diffusive = 0.25 * h**2 / nu if nu else np.inf
         return 0.6 * min(advective, diffusive)
 
-    assert sim.dt == pytest.approx(expected_dt(0.5))
+    dt = sim.dt
+    sim.ho_scheme.compute_dt()
+    assert dt == pytest.approx(min(sim.ho_scheme.dt, expected_dt(0.5)))
     # Recompute after a change in the state, rather than retaining the initial dt.
     sim.dm.W_cv[1] = 1e4
     sim.compute_dt()

@@ -457,8 +457,14 @@ class SD_Scheme(SemiDiscreteScheme):
         h = self.h_min / (self.p + 1)
         dt = h / c_max
         dt = self.comms.reduce_min(dt).item()
-        if self.viscosity and self.nu > 0:
-            dt = min(dt, h**2 / self.nu * 0.25)
+        diffusivity = max(
+            self.nu * max(1., 2. - self.beta) if self.viscosity else 0.,
+            (self.gamma - 1.) * self.chi if self.thdiffusion else 0.,
+        )
+        if diffusivity > 0:
+            # Physical FV subcells are nonuniform within each SD element.
+            h_min = min(width.min().item() for width in self.h_fp.values())
+            dt = min(dt, h_min**2 / (2 * self.ndim * diffusivity))
         self.dt = self.cfl_coeff * dt
         self._sim.dt = self.dt
 
