@@ -29,6 +29,8 @@ class FV_Simulator(Simulator):
         Slope limiter name ('minmod', 'moncen').
     predictor : bool
         If True use MUSCL-Hancock, else plain MUSCL.
+    superfv_viscosity : bool
+        Use SuperFV diffusion fluxes for pure MUSCL-Hancock with ``rk1``.
     *args, **kwargs
         Forwarded to Simulator.__init__().
     """
@@ -39,6 +41,7 @@ class FV_Simulator(Simulator):
         slope_limiter: str = "minmod",
         scheme: str = "MUSCL-Hancock",
         time_integrator: str = "ader",
+        superfv_viscosity: bool = False,
         *args,
         **kwargs,
     ):
@@ -58,6 +61,7 @@ class FV_Simulator(Simulator):
             riemann_solver=riemann_solver_fv,
             slope_limiter=slope_limiter,
             scheme=scheme,
+            superfv_viscosity=superfv_viscosity,
         )
 
         self.scheme.initialize()

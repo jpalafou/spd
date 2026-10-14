@@ -35,6 +35,8 @@ class FV_Scheme(SemiDiscreteScheme):
     predictor : bool
         If True, use MUSCL-Hancock (predictor-corrector).
         If False, use plain MUSCL.
+    superfv_viscosity : bool
+        Use SuperFV diffusion on a uniform, pure MUSCL-Hancock mesh with ``rk1``.
     """
 
     def __init__(
@@ -45,8 +47,22 @@ class FV_Scheme(SemiDiscreteScheme):
         slope_limiter="minmod",
         scheme="MUSCL-Hancock",
         dm=None,
+        superfv_viscosity=False,
     ):
         super().__init__(sim)
+        if superfv_viscosity and (
+            equations != "hydro"
+            or self.soe != "hydro"
+            or scheme != "MUSCL-Hancock"
+            or self.ader
+            or self.integrator.nstages != 1
+            or any(n != 1 for n in self.n.values())
+        ):
+            raise ValueError(
+                "superfv_viscosity requires pure hydrodynamic MUSCL-Hancock "
+                "on a uniform FV mesh with time_integrator='rk1'."
+            )
+        self.superfv_viscosity = superfv_viscosity
         self.riemann_solver = rs1d(riemann_solver, equations).solver
         self.slope_limiter = muscl.Slope_limiter(slope_limiter)
         self.scheme = scheme
@@ -542,7 +558,12 @@ class FV_Scheme(SemiDiscreteScheme):
         self.Boundaries(self.dm.M)
         self.fluxes(self, F, dt)
         if self.viscosity or self.thdiffusion:
-            self.compute_nabla_terms(F)
+            if self.superfv_viscosity:
+                from .superfv_viscosity import add_superfv_diffusion
+
+                add_superfv_diffusion(self, F)
+            else:
+                self.compute_nabla_terms(F)
 
 
     def compute_nabla_terms(self,F: dict):

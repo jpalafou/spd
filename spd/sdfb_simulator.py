@@ -53,6 +53,8 @@ class SPD_Simulator(Simulator):
         Riemann solver names.
     slope_limiter : str
         Slope limiter name.
+    superfv_viscosity : bool
+        Use SuperFV diffusion fluxes; requires ``scheme="FV"`` and ``rk1``.
     """
 
     def __init__(
@@ -76,6 +78,7 @@ class SPD_Simulator(Simulator):
         riemann_solver_fv: str = "llf",
         slope_limiter: str = "minmod",
         ho_scheme_cls=None,
+        superfv_viscosity: bool = False,
         *args,
         **kwargs,
     ):
@@ -87,6 +90,9 @@ class SPD_Simulator(Simulator):
                 scheme = scheme + "FB"
             elif not FB and "FB" in scheme:
                 scheme = scheme.replace("FB", "")
+
+        if superfv_viscosity and scheme != "FV":
+            raise ValueError("superfv_viscosity requires a pure FV scheme without fallback.")
 
         # Store FB params before super().__init__
         self._fb_params = dict(
@@ -126,7 +132,8 @@ class SPD_Simulator(Simulator):
                 self.n[dim] = 1
                 setattr(self, f"n{dim}", 1)
             self.ho_scheme = FV_Scheme(
-                self, riemann_solver=riemann_solver_fv, slope_limiter=slope_limiter
+                self, riemann_solver=riemann_solver_fv, slope_limiter=slope_limiter,
+                superfv_viscosity=superfv_viscosity,
             )
         else:
             raise ValueError(f"Invalid scheme: {scheme}")
