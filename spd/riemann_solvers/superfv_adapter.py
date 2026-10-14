@@ -38,11 +38,7 @@ def _superfv_riemann_kernel(solver_name, npassive):
         var_idx_map["dye"] = 5
         group_var_map["passives"] = ["dye"]
     idx = VariableIndexMap(var_idx_map, group_var_map=group_var_map)
-    solver = {
-        "hllc": RiemannSolver.HLLC,
-        "llf": RiemannSolver.LLF,
-    }[solver_name]
-    return solver, solve_riemann_problem, idx
+    return solver_name, solve_riemann_problem, idx
 
 
 def superfv_riemann(
