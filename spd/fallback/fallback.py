@@ -75,6 +75,11 @@ class FallbackScheme(FV_Scheme):
     NAD_neighbors : str
         DMP stencil for the NAD bounds: '1st' (von Neumann / face neighbors)
         or '2nd' (Moore / box neighborhood, includes diagonal neighbors).
+    NAD_cfl : bool
+        Scale either NAD tolerance by min(1, c_max * dt / h), using
+        c_max = max(ndim * c_s + sum(abs(v_d))) over the domain, the
+        candidate-update timestep (dt * w_tp[i] for ADER), and each cell's
+        maximum directional width. Default is False. Not implemented for WB=True.
     PAD : bool
         Enable physically admissible detection.
     blending : bool
@@ -106,7 +111,10 @@ class FallbackScheme(FV_Scheme):
         min_P=1e-10,
         godunov=False,
         limiting_variables=None,
+        NAD_cfl=False,
     ):
+        if NAD_cfl and sim.WB:
+            raise NotImplementedError("NAD_cfl is not implemented for WB=True.")
         super().__init__(
             sim,
             riemann_solver=riemann_solver,
@@ -121,6 +129,7 @@ class FallbackScheme(FV_Scheme):
         self.SED = SED
         self.NAD = NAD
         self.NAD_neighbors = NAD_neighbors
+        self.NAD_cfl = NAD_cfl
         self.PAD = PAD
         self.blending = blending
         self.min_rho = min_rho
@@ -299,13 +308,13 @@ class FallbackScheme(FV_Scheme):
     # Trouble detection
     # ----------------------------------------------------------------
 
-    def detect_troubles(self):
+    def detect_troubles(self, dt):
         """
         Detect troubled cells using NAD/PAD criteria.
         Delegates to the trouble_detection module.
         """
         with self._time("detect_troubles"):
-            detect_troubles(self)
+            detect_troubles(self, dt)
 
     # ----------------------------------------------------------------
     # Flux blending
@@ -370,7 +379,7 @@ class FallbackScheme(FV_Scheme):
             )
             # Tentative HO update for trouble detection; F_fp still holds HO fluxes
             self.apply_fluxes(dt)
-        self.detect_troubles()
+        self.detect_troubles(dt)
         # Redirect compute_fluxes output to F_fp_FB so HO fluxes in F_fp survive
         with self._time("fallback_fluxes"):
             self.compute_fluxes(self.F_fp_FB, dt, call_timer=False)

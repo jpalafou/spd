@@ -37,6 +37,11 @@ class SPD_Simulator(Simulator):
     NAD_neighbors : str
         DMP stencil for the NAD bounds: '1st' (von Neumann / face neighbors)
         or '2nd' (Moore / box neighborhood, includes diagonal neighbors).
+    NAD_cfl : bool
+        Scale either NAD tolerance by min(1, c_max * dt / h), using
+        the compute_dt characteristic speed, candidate-update timestep,
+        and each cell's maximum directional width. Default is False.
+        Not implemented for WB=True.
     PAD : bool
         Enable physically admissible detection.
     blending : bool
@@ -79,6 +84,7 @@ class SPD_Simulator(Simulator):
         slope_limiter: str = "minmod",
         ho_scheme_cls=None,
         superfv_viscosity: bool = False,
+        NAD_cfl: bool = False,
         *args,
         **kwargs,
     ):
@@ -100,6 +106,7 @@ class SPD_Simulator(Simulator):
             SED=SED,
             NAD=NAD,
             NAD_neighbors=NAD_neighbors,
+            NAD_cfl=NAD_cfl,
             PAD=PAD,
             blending=blending,
             min_rho=min_rho,

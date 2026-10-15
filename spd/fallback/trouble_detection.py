@@ -158,6 +158,7 @@ def nad_check(W_new, W_min, W_max, alpha, tolerance, delta_mode):
 
     Flags cells whose new solution leaves the tolerance-relaxed DMP bounds
     [W_min, W_max], except at smooth extrema (alpha >= 1, when given).
+    Tolerance may be a scalar or a broadcastable per-cell array.
     Single fused kernel on the GPU; numpy chain on the CPU.
     """
     if is_gpu_array(W_new):
@@ -196,7 +197,7 @@ def pad_check(troubles, rho, P, min_rho, max_rho, min_P):
     return np.where(P >= min_P, troubles, 1)
 
 
-def detect_troubles(self: Simulator):
+def detect_troubles(self: Simulator, dt):
     if self.godunov:
         return
 
@@ -241,6 +242,20 @@ def detect_troubles(self: Simulator):
             alpha = np.where(alpha_new < alpha, alpha_new, alpha)
 
     tolerance = self.tolerance if self.p > 0 else 0.0
+    if self.NAD_cfl and self.p > 0:
+        # Match compute_dt's characteristic speed using the pre-update state.
+        W = self.W_cv
+        c = self.ndim * self.equations.compute_cs(
+            W[self._p_], W[self._d_], self.gamma, self.min_c2
+        )
+        for vel in self.vels[: self.ndim]:
+            c += np.abs(W[vel])
+        c_max = self.comms.reduce_max(np.max(c).item())
+        # The largest local width gives the tightest NAD tolerance.
+        h = 0.0
+        for dim, idim in self.dims.items():
+            h = np.maximum(h, self.h_fp[dim][cut(ngh, -ngh, idim)])
+        tolerance = tolerance * np.minimum(1.0, c_max * dt / h)
     possible_trouble = nad_check(
         W_new_lv, W_min, W_max, alpha, tolerance, self.NAD == "delta"
     )
