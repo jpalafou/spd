@@ -215,9 +215,9 @@ class SD_Scheme(SemiDiscreteScheme):
         self.W_gh = W_gh
         self.W_init_cv = self.active_region(W_gh)
         self.dm.W_cv = self.W_init_cv.copy()
-        self.dm.W_sp = self.compute_sp_from_cv(self.dm.W_cv)
-        self.dm.U_sp = self.compute_conservatives(self.dm.W_sp)
-        self.dm.U_cv = self.compute_conservatives(self.dm.W_cv)
+        self.dm.W_sp = self.compute_sp_from_cv(self.dm.W_cv, call_timer=False)
+        self.dm.U_sp = self.compute_conservatives(self.dm.W_sp, call_timer=False)
+        self.dm.U_cv = self.compute_conservatives(self.dm.W_cv, call_timer=False)
 
     def init_Boundaries(self) -> None:
         ndim = self.ndim
@@ -333,31 +333,39 @@ class SD_Scheme(SemiDiscreteScheme):
     # Transforms between point sets
     # ----------------------------------------------------------------
 
-    def compute_sp_from_cv(self, M_cv) -> np.ndarray:
-        return compute_A_from_B_full(M_cv, self.dm.cv_to_sp, self.ndim)
+    def compute_sp_from_cv(self, M_cv, call_timer: bool = True, timer_cat: str = "einsum") -> np.ndarray:
+        with self._time(timer_cat, call_timer):
+            return compute_A_from_B_full(M_cv, self.dm.cv_to_sp, self.ndim)
 
-    def compute_cv_from_sp(self, M_sp) -> np.ndarray:
-        return compute_A_from_B_full(M_sp, self.dm.sp_to_cv, self.ndim)
+    def compute_cv_from_sp(self, M_sp, call_timer: bool = True) -> np.ndarray:
+        with self._time("einsum", call_timer):
+            return compute_A_from_B_full(M_sp, self.dm.sp_to_cv, self.ndim)
 
     def compute_cv_from_sp_fv(self, M_sp) -> np.ndarray:
         """Project sp->cv and emit the FV cell-based layout directly,
         fusing the projection and transpose_to_fv into one einsum."""
-        return compute_A_from_B_full_fv(M_sp, self.dm.sp_to_cv, self.ndim)
+        with self._time("transpose"):
+            return compute_A_from_B_full_fv(M_sp, self.dm.sp_to_cv, self.ndim)
 
     def compute_cp_from_sp(self, M_sp) -> np.ndarray:
-        return compute_A_from_B_full(M_sp, self.dm.sp_to_fp, self.ndim)
+        with self._time("einsum"):
+            return compute_A_from_B_full(M_sp, self.dm.sp_to_fp, self.ndim)
 
     def compute_sp_from_cp(self, M_cp) -> np.ndarray:
-        return compute_A_from_B_full(M_cp, self.dm.fp_to_sp, self.ndim)
+        with self._time("einsum"):
+            return compute_A_from_B_full(M_cp, self.dm.fp_to_sp, self.ndim)
 
     def compute_sp_from_fp(self, M_fp, dim, **kwargs) -> np.ndarray:
-        return compute_A_from_B(M_fp, self.dm.fp_to_sp, dim, self.ndim, **kwargs)
+        with self._time("einsum"):
+            return compute_A_from_B(M_fp, self.dm.fp_to_sp, dim, self.ndim, **kwargs)
 
     def compute_fp_from_sp(self, M_sp, dim, **kwargs) -> np.ndarray:
-        return compute_A_from_B(M_sp, self.dm.sp_to_fp, dim, self.ndim, **kwargs)
+        with self._time("einsum"):
+            return compute_A_from_B(M_sp, self.dm.sp_to_fp, dim, self.ndim, **kwargs)
 
     def compute_sp_from_dfp(self, M_fp, dim, **kwargs) -> np.ndarray:
-        return compute_A_from_B(M_fp, self.dm.dfp_to_sp, dim, self.ndim, **kwargs)
+        with self._time("einsum"):
+            return compute_A_from_B(M_fp, self.dm.dfp_to_sp, dim, self.ndim, **kwargs)
 
     def compute_sp_from_dfp_x(self, Fx, ader=True):
         return self.compute_sp_from_dfp(Fx, "x", ader=ader) / self.h["x"]
@@ -371,9 +379,10 @@ class SD_Scheme(SemiDiscreteScheme):
     def integrate_faces(self, M_fp, dim, ader=True):
         for other_dim in self.dims:
             if dim != other_dim:
-                M_fp = compute_A_from_B(
-                    M_fp, self.dm.sp_to_cv, other_dim, self.ndim, ader=ader
-                )
+                with self._time("einsum"):
+                    M_fp = compute_A_from_B(
+                        M_fp, self.dm.sp_to_cv, other_dim, self.ndim, ader=ader
+                    )
         return M_fp
 
     def compute_gradient(self, M_fp, dim, ader=True):
@@ -386,36 +395,38 @@ class SD_Scheme(SemiDiscreteScheme):
     def transpose_to_fv(self, M):
         """Transpose SD element-based array to FV cell-based layout."""
         # nvar,Nz,Ny,Nx,nz,ny,nx → nvar,Nznz,Nyny,Nxnx
-        if self.ndim == 1:
-            assert M.ndim == 3
-            return M.reshape(M.shape[0], M.shape[1] * M.shape[2])
-        elif self.ndim == 2:
-            assert M.ndim == 5
-            return np.transpose(M, (0, 1, 3, 2, 4)).reshape(
-                M.shape[0], M.shape[1] * M.shape[3], M.shape[2] * M.shape[4]
-            )
-        else:
-            assert M.ndim == 7
-            return np.transpose(M, (0, 1, 4, 2, 5, 3, 6)).reshape(
-                M.shape[0],
-                M.shape[1] * M.shape[4],
-                M.shape[2] * M.shape[5],
-                M.shape[3] * M.shape[6],
-            )
+        with self._time("transpose"):
+            if self.ndim == 1:
+                assert M.ndim == 3
+                return M.reshape(M.shape[0], M.shape[1] * M.shape[2])
+            elif self.ndim == 2:
+                assert M.ndim == 5
+                return np.transpose(M, (0, 1, 3, 2, 4)).reshape(
+                    M.shape[0], M.shape[1] * M.shape[3], M.shape[2] * M.shape[4]
+                )
+            else:
+                assert M.ndim == 7
+                return np.transpose(M, (0, 1, 4, 2, 5, 3, 6)).reshape(
+                    M.shape[0],
+                    M.shape[1] * M.shape[4],
+                    M.shape[2] * M.shape[5],
+                    M.shape[3] * M.shape[6],
+                )
 
     def transpose_to_sd(self, M):
         """Transpose FV cell-based array to SD element-based layout."""
         # nvar,Nznz,Nyny,Nxnx → nvar,Nz,Ny,Nx,nz,ny,nx
-        shape = []
-        for dim in self.dims:
-            shape += [self.n[dim], self.N[dim]]
-        shape = [M.shape[0]] + shape[::-1]
-        if self.ndim == 1:
-            return M.reshape(shape)
-        elif self.ndim == 2:
-            return np.transpose(M.reshape(shape), (0, 1, 3, 2, 4))
-        else:
-            return np.transpose(M.reshape(shape), (0, 1, 3, 5, 2, 4, 6))
+        with self._time("transpose"):
+            shape = []
+            for dim in self.dims:
+                shape += [self.n[dim], self.N[dim]]
+            shape = [M.shape[0]] + shape[::-1]
+            if self.ndim == 1:
+                return M.reshape(shape)
+            elif self.ndim == 2:
+                return np.transpose(M.reshape(shape), (0, 1, 3, 2, 4))
+            else:
+                return np.transpose(M.reshape(shape), (0, 1, 3, 5, 2, 4, 6))
 
     def interpolate_to_regular_mesh(self, W):
         """Interpolate solution to a regular mesh."""
@@ -433,13 +444,13 @@ class SD_Scheme(SemiDiscreteScheme):
     # Primitives / equilibrium helpers
     # ----------------------------------------------------------------
 
-    def compute_primitives_cv(self, U) -> np.ndarray:
+    def compute_primitives_cv(self, U, call_timer: bool = True) -> np.ndarray:
         if self.WB:
             return self.compute_primitives(
-                U + self.dm.U_eq_cv
-            ) - self.compute_primitives(self.dm.U_eq_cv)
+                U + self.dm.U_eq_cv, call_timer=call_timer
+            ) - self.compute_primitives(self.dm.U_eq_cv, call_timer=call_timer)
         else:
-            return self.compute_primitives(U)
+            return self.compute_primitives(U, call_timer=call_timer)
 
     # ----------------------------------------------------------------
     # CFL time step
@@ -488,7 +499,8 @@ class SD_Scheme(SemiDiscreteScheme):
             if self.WB:
                 # U' -> U
                 self.M_fp[dim] += self.dm.__getattribute__(f"M_eq_fp_{dim}")[:, na]
-            bc.Boundaries(self, self.M_fp[dim], dim)
+            with self._time("boundary_conditions"):
+                bc.Boundaries(self, self.M_fp[dim], dim)
             self.compute_fluxes(self.F_fp[dim], self.M_fp[dim], vels, prims)
             bc.store_interfaces(self, self.M_fp[dim], dim)
             F = self.riemann_solver(
@@ -500,6 +512,7 @@ class SD_Scheme(SemiDiscreteScheme):
                 self.gamma,
                 self.min_c2,
                 prims,
+                timer=self,
                 npassive=self.npassive,
                 thdiffusion=self.thdiffusion,
                 _t_=self._t_,
@@ -518,7 +531,8 @@ class SD_Scheme(SemiDiscreteScheme):
         for dim in self.dims:
             idim = self.dims[dim]
             self.M_fp[dim][...] = self.compute_primitives(self.M_fp[dim])
-            bc.Boundaries_sd(self, self.M_fp[dim], dim)
+            with self._time("boundary_conditions"):
+                bc.Boundaries_sd(self, self.M_fp[dim], dim)
             M = self.ML_fp[dim]
             bc.apply_interfaces(self, M, self.M_fp[dim], dim)
             dW_sp[idim] = self.compute_gradient(self.M_fp[dim], dim, ader=ader)
@@ -531,9 +545,10 @@ class SD_Scheme(SemiDiscreteScheme):
                 dW_fp[idim] = self.compute_fp_from_sp(
                     dW_sp[idim], dim, ader=ader
                 )
-                bc.Boundaries_sd(
-                    self, dW_fp[idim], dim, gradient_dim=self.idims[idim]
-                )
+                with self._time("boundary_conditions"):
+                    bc.Boundaries_sd(
+                        self, dW_fp[idim], dim, gradient_dim=self.idims[idim]
+                    )
                 dW = self.MR_fp[dim]
                 bc.apply_interfaces(self, dW, dW_fp[idim], dim)
             self.F_fp[dim][...] -= self.compute_viscous_fluxes(
@@ -563,7 +578,9 @@ class SD_Scheme(SemiDiscreteScheme):
     def compute_update(self, U, ader=False, prims=False, **kwargs):
         """Compute the spatial RHS: solve faces then compute dU/dt."""
         self.solve_faces(U, prims=prims, ader=ader)
-        return self.compute_dudt(U, ader=ader)
+        with self._time("compute_dudt"):
+            dUdt = self.compute_dudt(U, ader=ader)
+        return dUdt
 
     # ----------------------------------------------------------------
     # Solution state management
@@ -579,13 +596,13 @@ class SD_Scheme(SemiDiscreteScheme):
         self.dm.U_sp -= dU
         self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp)
 
-    def convert_solution(self, W=False):
+    def convert_solution(self, W=False, call_timer: bool = True):
         if W:
-            self.dm.U_cv[...] = self.compute_conservatives(self.dm.W_cv)
-            self.dm.U_sp[...] = self.compute_sp_from_cv(self.dm.U_cv)
+            self.dm.U_cv[...] = self.compute_conservatives(self.dm.W_cv, call_timer=call_timer)
+            self.dm.U_sp[...] = self.compute_sp_from_cv(self.dm.U_cv, call_timer=call_timer)
         else:
-            self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp)
-            self.dm.W_cv[...] = self.compute_primitives(self.dm.U_cv)
+            self.dm.U_cv[...] = self.compute_cv_from_sp(self.dm.U_sp, call_timer=call_timer)
+            self.dm.W_cv[...] = self.compute_primitives(self.dm.U_cv, call_timer=call_timer)
 
     def post_update(self):
         """Called after time integrator step: update primitives."""

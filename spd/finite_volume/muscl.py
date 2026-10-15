@@ -202,7 +202,8 @@ class Slope_limiter:
 def MUSCL_fluxes(self: Simulator,
                  F: dict,
                  dt: float,
-                 prims=True)->None:
+                 prims=True,
+                 call_timer: bool = True)->None:
     """
     Returns the MUSCL scheme fluxes for conserved variales
 
@@ -222,7 +223,7 @@ def MUSCL_fluxes(self: Simulator,
     for dim in self.dims:
         idim=self.dims[dim]
         reconstruct_faces(self, dim, idim)
-        self.solve_riemann_problem(dim,F[dim],prims)
+        self.solve_riemann_problem(dim, F[dim], prims, call_timer=call_timer)
     
 def compute_prediction(W: np.ndarray,
                        dWs: np.ndarray,
@@ -274,7 +275,8 @@ def compute_prediction(W: np.ndarray,
 def MUSCL_Hancock_fluxes(self: Simulator,
                          F: dict,
                          dt: float,
-                         prims=True)->None:
+                         prims=True,
+                         call_timer: bool = True)->None:
     """
     Parameters
     ---------- 
@@ -320,5 +322,4 @@ def MUSCL_Hancock_fluxes(self: Simulator,
         idim=self.dims[dim]
         self.MR_fp[dim][...] = self.interpolate_R(self.dm.M,S[idim],idim)
         self.ML_fp[dim][...] = self.interpolate_L(self.dm.M,S[idim],idim)
-        self.solve_riemann_problem(dim,F[dim],prims)
-
+        self.solve_riemann_problem(dim, F[dim], prims, call_timer=call_timer)

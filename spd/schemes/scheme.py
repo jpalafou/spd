@@ -114,12 +114,13 @@ class SemiDiscreteScheme:
             )
             if ader_iter < self.m:
                 s = self.ader_string()
-                self.dm.U_ader[...] = (
-                    np.einsum(
-                        f"np,up{s}->un{s}", self.dm.invader, dUdt
+                with self._time("einsum"):
+                    self.dm.U_ader[...] = (
+                        np.einsum(
+                            f"np,up{s}->un{s}", self.dm.invader, dUdt
+                        )
+                        * self.dt
                     )
-                    * self.dt
-                )
                 self.dm.U_ader[...] = (
                     self.get_solution(ader=True) - self.dm.U_ader
                 )
@@ -127,7 +128,8 @@ class SemiDiscreteScheme:
     def ader_update(self):
         dUdt = self.compute_dudt(self.dm.U_ader, ader=True)
         s = self.ader_string()
-        dU = np.einsum(f"t,ut{s}->u{s}", self.dm.w_tp, dUdt) * self.dt
+        with self._time("einsum"):
+            dU = np.einsum(f"t,ut{s}->u{s}", self.dm.w_tp, dUdt) * self.dt
         self.update_solution(dU)
 
     # ----------------------------------------------------------------
@@ -159,11 +161,11 @@ class SemiDiscreteScheme:
         """Create dimension-keyed dictionaries for convenient array access."""
         pass
 
-    def convert_solution(self, W=False):
+    def convert_solution(self, W=False, call_timer: bool = True):
         """Convert between conservative/primitive or point representations."""
         pass
 
-    def compute_primitives_cv(self, U):
+    def compute_primitives_cv(self, U, call_timer: bool = True):
         """
         Compute primitive variables from conservatives, handling
         the well-balanced case when WB is enabled.
@@ -176,11 +178,11 @@ class SemiDiscreteScheme:
             if U.ndim > U_eq.ndim:
                 U_eq = U_eq[:, np.newaxis]
             return (
-                self.compute_primitives(U + U_eq)
-                - self.compute_primitives(U_eq)
+                self.compute_primitives(U + U_eq, call_timer=call_timer)
+                - self.compute_primitives(U_eq, call_timer=call_timer)
             )
         else:
-            return self.compute_primitives(U)
+            return self.compute_primitives(U, call_timer=call_timer)
 
     def post_update(self):
         """Called after the time integrator completes a step."""

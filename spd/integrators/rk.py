@@ -113,21 +113,24 @@ class RK_Integrator(Integrator):
             and dt attribute.
         """
         dt = target.dt
-        for stage in range(self.nstages):
-            # Skip zero Butcher entries (exact no-ops).
+        with target._time("update_unew"):
+            for stage in range(self.nstages):
+                # Skip zero Butcher entries (exact no-ops).
+                terms = [
+                    (target.dm.__getattribute__(f"K_{j}"), dt * self.A[stage, j])
+                    for j in range(stage)
+                    if self.A[stage, j] != 0.0
+                ]
+                stage_state(target.dm.U_stage, target.get_solution(), terms)
+                # Compute dUdt at the current stage
+                Ks = target.dm.__getattribute__(f"K_{stage}")
+                with target._time("f"):
+                    Ks[...] = target.compute_update(
+                        target.dm.U_stage, ader=False, c_l=self.c[stage], dt=dt
+                    )
             terms = [
-                (target.dm.__getattribute__(f"K_{j}"), dt * self.A[stage, j])
-                for j in range(stage)
-                if self.A[stage, j] != 0.0
+                (target.dm.__getattribute__(f"K_{stage}"), dt * self.b[stage])
+                for stage in range(self.nstages)
             ]
-            stage_state(target.dm.U_stage, target.get_solution(), terms)
-            # Compute dUdt at the current stage
-            Ks = target.dm.__getattribute__(f"K_{stage}")
-            Ks[...] = target.compute_update(target.dm.U_stage, ader=False,
-                                         c_l=self.c[stage], dt=dt)
-        terms = [
-            (target.dm.__getattribute__(f"K_{stage}"), dt * self.b[stage])
-            for stage in range(self.nstages)
-        ]
-        weighted_sum(target.dm.U_stage, terms)
-        target.update_solution(target.dm.U_stage)
+            weighted_sum(target.dm.U_stage, terms)
+            target.update_solution(target.dm.U_stage)

@@ -1,4 +1,6 @@
 from typing import Callable, Tuple
+from contextlib import contextmanager
+
 import numpy as np
 import os
 
@@ -9,6 +11,7 @@ from .runtime.comms import CommHelper
 from .initial_conditions import sine_wave
 from . import hydro
 from .MHD import mhd
+from superfv.tools.step_history import MultiTimer
 
 
 class Simulator:
@@ -35,6 +38,9 @@ class Simulator:
         the legacy "init" path and uses this scheme directly.
         When *None* (default / backward compat) subclasses create
         the scheme themselves.
+    profile : bool
+        Enable detailed timers. ``take_step`` is always timed. Timer boundaries
+        synchronize CUDA when ``use_cupy=True``.
     """
 
     def __init__(
@@ -70,6 +76,7 @@ class Simulator:
             ("periodic", "periodic"),
         ),
         verbose=True,
+        profile: bool = False,
         available_time=3600.0,
         init: bool = True,
         folder: str = "outputs/",
@@ -93,6 +100,24 @@ class Simulator:
         self.integrator = None
         self.scheme = None  # Set by subclass or factory
         self.execution_time = 0.0
+        self.timer_categories = [
+            "take_step",
+            "compute_dt",
+            "update_unew",
+            "f",
+            "compute_dudt",
+            "primitive_conservative",
+            "boundary_conditions",
+            "einsum",
+            "transpose",
+            "riemann_solver",
+            "mood_loop",
+            "candidate_solution",
+            "detect_troubles",
+            "fallback_fluxes",
+            "assign_fluxes",
+        ]
+        self.timer = MultiTimer(self.timer_categories)
         ndim = len(N)
         self.ndim = ndim
         assert len(BC) >= ndim
@@ -130,6 +155,7 @@ class Simulator:
         self.potential = potential
         self.WB = WB
         self.verbose = verbose
+        self.profile = profile
         self.comms = CommHelper(self.ndim)
         self.use_cupy = use_cupy
         # dm is now owned by the scheme; see the dm property below.
@@ -205,6 +231,17 @@ class Simulator:
             dm = GPUDataManager(self.use_cupy)
             object.__setattr__(self, '_dm', dm)
         return dm
+
+    @contextmanager
+    def _time(self, category, enabled=True):
+        enabled = enabled and (category == "take_step" or self.profile)
+        if enabled:
+            self.timer.start(category, self.use_cupy)
+        try:
+            yield
+        finally:
+            if enabled:
+                self.timer.stop(category, self.use_cupy)
 
     # ----------------------------------------------------------------
     # Integrator selection
@@ -296,29 +333,31 @@ class Simulator:
     def post_init(self) -> None:
         self.scheme.post_init()
 
-    def compute_primitives(self, U, **kwargs) -> np.ndarray:
-        return self.equations.compute_primitives(
-            U,
-            self.vels,
-            self._p_,
-            self.gamma,
-            _t_=self._t_,
-            thdiffusion=self.thdiffusion,
-            npassive=self.npassive,
-            **kwargs,
-        )
+    def compute_primitives(self, U, call_timer: bool = True, **kwargs) -> np.ndarray:
+        with self._time("primitive_conservative", call_timer):
+            return self.equations.compute_primitives(
+                U,
+                self.vels,
+                self._p_,
+                self.gamma,
+                _t_=self._t_,
+                thdiffusion=self.thdiffusion,
+                npassive=self.npassive,
+                **kwargs,
+            )
 
-    def compute_conservatives(self, W, **kwargs) -> np.ndarray:
-        return self.equations.compute_conservatives(
-            W,
-            self.vels,
-            self._p_,
-            self.gamma,
-            _t_=self._t_,
-            thdiffusion=self.thdiffusion,
-            npassive=self.npassive,
-            **kwargs,
-        )
+    def compute_conservatives(self, W, call_timer: bool = True, **kwargs) -> np.ndarray:
+        with self._time("primitive_conservative", call_timer):
+            return self.equations.compute_conservatives(
+                W,
+                self.vels,
+                self._p_,
+                self.gamma,
+                _t_=self._t_,
+                thdiffusion=self.thdiffusion,
+                npassive=self.npassive,
+                **kwargs,
+            )
 
     def compute_fluxes(self, F, M, vels, prims) -> np.ndarray:
         if prims:
@@ -417,9 +456,9 @@ class Simulator:
         if self.scheme is not None:
             self.scheme.create_dicts()
 
-    def convert_solution(self, W=False):
+    def convert_solution(self, W=False, call_timer: bool = True):
         if self.scheme is not None:
-            self.scheme.convert_solution(W=W)
+            self.scheme.convert_solution(W=W, call_timer=call_timer)
 
     # ----------------------------------------------------------------
     # Simulation lifecycle
@@ -434,13 +473,14 @@ class Simulator:
         self.checkpoint = False
         self.switch_to_device()
         self.create_dicts()
+        self.timer = MultiTimer(self.timer_categories)
         self.execution_time = -timer()
 
     def end_sim(self):
         self.execution_time += timer()
         # Convert while arrays are still on the device: the host-side
         # conversion (numpy einsum) is orders of magnitude slower.
-        self.convert_solution()
+        self.convert_solution(call_timer=False)
         self.switch_to_host()
         self.create_dicts()
         if self.rank == 0:
@@ -476,8 +516,11 @@ class Simulator:
     def perform_iterations(self, n_step: int) -> None:
         self.init_sim()
         for i in range(n_step):
-            self.compute_dt()
-            self.perform_update()
+            with self._time("take_step"):
+                with self._time("compute_dt"):
+                    self.compute_dt()
+
+                self.perform_update()
         self.end_sim()
 
     def perform_time_evolution(self, t_end: float, nsteps=0) -> None:
@@ -485,16 +528,20 @@ class Simulator:
         while self.time < t_end:
             if not self.n_step % 100 and self.rank == 0 and self.verbose:
                 print(f"Time step #{self.n_step} (t = {np.round(self.time,3)})", end="\r")
-            self.compute_dt()
-            if self.time + self.dt >= t_end:
-                dt = t_end - self.time
-                if dt > 1e-14:
-                    self.dt = dt
-                    self.scheme.dt = dt
-                else:
-                    print(f"dt={dt}")
-                    break
-            self.status = self.perform_update()
+            with self._time("take_step"):
+                with self._time("compute_dt"):
+                    self.compute_dt()
+
+                if self.time + self.dt >= t_end:
+                    dt = t_end - self.time
+                    if dt > 1e-14:
+                        self.dt = dt
+                        self.scheme.dt = dt
+                    else:
+                        print(f"dt={dt}")
+                        break
+                self.status = self.perform_update()
+
             if not (self.checkpoint):
                 if (
                     (self.available_time - self.elapsed_time) < 120
@@ -538,7 +585,7 @@ class Simulator:
         if self.comms.size > 1:
             file += f"_{self.comms.rank}"
         self.dm.W_cv[...] = np.load(file + ".npy")
-        self.convert_solution(W=True)
+        self.convert_solution(W=True, call_timer=False)
         self.noutput += 1
 
     def save_checkpoint(self):

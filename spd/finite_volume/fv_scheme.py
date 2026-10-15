@@ -524,7 +524,7 @@ class FV_Scheme(SemiDiscreteScheme):
     # ----------------------------------------------------------------
 
     def solve_riemann_problem(
-        self, dim: str, F: np.ndarray, prims: bool
+        self, dim: str, F: np.ndarray, prims: bool, call_timer: bool = True
     ) -> None:
         """Solve the Riemann problem at FV cell interfaces."""
         idim = self.dims[dim]
@@ -533,17 +533,20 @@ class FV_Scheme(SemiDiscreteScheme):
             M_eq_fp = self.dm.__getattribute__(f"M_eq_fp_{dim}")
             self.MR_fp[dim][...] += M_eq_fp
             self.ML_fp[dim][...] += M_eq_fp
-        F[...] = self.riemann_solver(
-            self.ML_fp[dim],
-            self.MR_fp[dim],
-            F,
-            vels,
-            self._p_,
-            self.gamma,
-            self.min_c2,
-            prims,
-            npassive=self.npassive,
-        )
+        with self._time("riemann_solver", call_timer):
+            F[...] = self.riemann_solver(
+                self.ML_fp[dim],
+                self.MR_fp[dim],
+                F,
+                vels,
+                self._p_,
+                self.gamma,
+                self.min_c2,
+                prims,
+                timer=self,
+                call_timer=False,
+                npassive=self.npassive,
+            )
         if self.WB:
             F -= self.dm.__getattribute__(f"F_eq_fp_{dim}")
 
@@ -551,22 +554,22 @@ class FV_Scheme(SemiDiscreteScheme):
     # Flux computation and RHS
     # ----------------------------------------------------------------
 
-    def compute_fluxes(self, F, dt: float) -> None:
+    def compute_fluxes(self, F, dt: float, call_timer: bool = True) -> None:
         """Compute FV fluxes: fill ghost cells, then MUSCL + Riemann."""
         self.dm.M[...] = 0
         self.fill_active_region(self.W_cv)
-        self.Boundaries(self.dm.M)
-        self.fluxes(self, F, dt)
+        self.Boundaries(self.dm.M, call_timer=call_timer)
+        self.fluxes(self, F, dt, call_timer=call_timer)
         if self.viscosity or self.thdiffusion:
             if self.superfv_viscosity:
                 from .superfv_viscosity import add_superfv_diffusion
 
                 add_superfv_diffusion(self, F)
             else:
-                self.compute_nabla_terms(F)
+                self.compute_nabla_terms(F, call_timer=call_timer)
 
 
-    def compute_nabla_terms(self,F: dict):
+    def compute_nabla_terms(self,F: dict, call_timer: bool = True):
         ngh=self.Nghc
         dW={}
         for dim in self.dims:
@@ -584,7 +587,7 @@ class FV_Scheme(SemiDiscreteScheme):
             idims = self.idims if self.viscosity else [idim]
             for idim in idims:
                 self.fill_active_region(dW[idim])
-                self.Boundaries(self.dm.M,all=False)    
+                self.Boundaries(self.dm.M, all=False, call_timer=call_timer)
                 S = self.compute_slopes(self.dm.M,shift)
                 #Counter the previous choice of values (now right)
                 dW_f[idim] = self.interpolate_R(self.dm.M,S,shift)
@@ -626,7 +629,9 @@ class FV_Scheme(SemiDiscreteScheme):
         else:
             self.compute_primitives(U, W=self.W_cv)
         self.compute_fluxes(self.F_fp, self.dt)
-        return self.compute_dudt(U, ader=ader)
+        with self._time("compute_dudt"):
+            dUdt = self.compute_dudt(U, ader=ader)
+        return dUdt
 
     def switch_to_finite_volume(self):
         """Switch to finite volume representation."""
@@ -649,15 +654,15 @@ class FV_Scheme(SemiDiscreteScheme):
     def update_solution(self, dU, ader=False):
         self.U_cv -= dU
 
-    def convert_solution(self, W=False):
+    def convert_solution(self, W=False, call_timer: bool = True):
         if W:
-            U = self.compute_conservatives(self.W_cv)
+            U = self.compute_conservatives(self.W_cv, call_timer=call_timer)
             if self.WB:
                 # W_cv is the full primitive state; store the perturbation.
                 U -= self.dm.U_eq_cv
             self.U_cv[...] = U
         else:
-            self.W_cv[...] = self.compute_primitives(self._full_solution())
+            self.W_cv[...] = self.compute_primitives(self._full_solution(), call_timer=call_timer)
 
     def post_update(self):
         """Called after time integrator step: update primitives."""
@@ -831,14 +836,15 @@ class FV_Scheme(SemiDiscreteScheme):
         self.dm.M[cut(None, ngh, idim)] = self.BC_fp[dim][0]
         self.dm.M[cut(-ngh, None, idim)] = self.BC_fp[dim][1]
 
-    def Boundaries(self, M: np.ndarray, all=True):
+    def Boundaries(self, M: np.ndarray, all=True, call_timer: bool = True):
         """Apply boundary conditions to all dimensions."""
-        for dim in self.dims:
-            self.store_BC(M, dim, all)
-            self.Comms(M, dim)
-            self.apply_BC(dim)
+        with self._time("boundary_conditions", call_timer):
+            for dim in self.dims:
+                self.store_BC(M, dim, all)
+                self.Comms(M, dim)
+                self.apply_BC(dim)
 
-    def Boundaries_scalar(self, M: np.ndarray):
+    def Boundaries_scalar(self, M: np.ndarray, call_timer: bool = True):
         """Fill ghost cells for an auxiliary scalar field (e.g. the trouble
         indicator) **without** touching the solution ``BC_fp`` buffer.
 
@@ -853,21 +859,22 @@ class FV_Scheme(SemiDiscreteScheme):
         ``affected_faces`` of 8 on boundary faces and make ``correct_fluxes``
         amplify (rather than replace) the high-order flux there.
         """
-        ngh = self.Nghc
-        for dim in self.dims:
-            idim = self.dims[dim]
-            BC = self.BC[dim]
-            bc = self.BC_fp_scalar[dim]
-            cuts = (cut(-2 * ngh, -ngh, idim), cut(ngh, 2 * ngh, idim))
-            for side in [0, 1]:
-                if BC[side] == "periodic":
-                    bc[side] = M[cuts[side]]
-                else:
-                    # zero-gradient: copy the nearest interior layer
-                    bc[side] = M[cuts[1 - side]]
-            self.comms.Comms_fv(self.dm, M, self.BC_fp_scalar, idim, dim, ngh)
-            M[cut(None, ngh, idim)] = bc[0]
-            M[cut(-ngh, None, idim)] = bc[1]
+        with self._time("boundary_conditions", call_timer):
+            ngh = self.Nghc
+            for dim in self.dims:
+                idim = self.dims[dim]
+                BC = self.BC[dim]
+                bc = self.BC_fp_scalar[dim]
+                cuts = (cut(-2 * ngh, -ngh, idim), cut(ngh, 2 * ngh, idim))
+                for side in [0, 1]:
+                    if BC[side] == "periodic":
+                        bc[side] = M[cuts[side]]
+                    else:
+                        # zero-gradient: copy the nearest interior layer
+                        bc[side] = M[cuts[1 - side]]
+                self.comms.Comms_fv(self.dm, M, self.BC_fp_scalar, idim, dim, ngh)
+                M[cut(None, ngh, idim)] = bc[0]
+                M[cut(-ngh, None, idim)] = bc[1]
 
     def Comms(self, M: np.ndarray, dim: str):
         comms = self.comms

@@ -304,7 +304,8 @@ class FallbackScheme(FV_Scheme):
         Detect troubled cells using NAD/PAD criteria.
         Delegates to the trouble_detection module.
         """
-        detect_troubles(self)
+        with self._time("detect_troubles"):
+            detect_troubles(self)
 
     # ----------------------------------------------------------------
     # Flux blending
@@ -363,14 +364,19 @@ class FallbackScheme(FV_Scheme):
         3. Compute MUSCL fluxes into F_fp_FB (not overwriting F_fp/HO).
         4. Blend F_fp (HO) and F_fp_FB (MUSCL) based on trouble indicators.
         """
-        self.W_cv[...] = self.primary.compute_primitives_cv(self.U_cv)
-        # Tentative HO update for trouble detection; F_fp still holds HO fluxes
-        self.apply_fluxes(dt)
+        with self._time("candidate_solution"):
+            self.W_cv[...] = self.primary.compute_primitives_cv(
+                self.U_cv, call_timer=False
+            )
+            # Tentative HO update for trouble detection; F_fp still holds HO fluxes
+            self.apply_fluxes(dt)
         self.detect_troubles()
         # Redirect compute_fluxes output to F_fp_FB so HO fluxes in F_fp survive
-        self.compute_fluxes(self.F_fp_FB, dt)
+        with self._time("fallback_fluxes"):
+            self.compute_fluxes(self.F_fp_FB, dt, call_timer=False)
         # Blend: F_fp = HO, F_fp_FB = MUSCL
-        self.correct_fluxes()
+        with self._time("assign_fluxes"):
+            self.correct_fluxes()
 
     # ----------------------------------------------------------------
     # Solution state delegation to primary (for RK integrator)
@@ -381,23 +387,23 @@ class FallbackScheme(FV_Scheme):
             return self.primary.array_sp(**kwargs)
         return super().array_sp(**kwargs)
 
-    def compute_primitives_cv(self, U):
+    def compute_primitives_cv(self, U, call_timer: bool = True):
         # The well-balanced equilibrium conservatives live on the primary's
         # data manager (and follow its SD<->FV layout toggling), so delegate
         # the perturbation->primitive conversion to the primary.
         if self.primary is not None:
-            return self.primary.compute_primitives_cv(U)
-        return super().compute_primitives_cv(U)
+            return self.primary.compute_primitives_cv(U, call_timer=call_timer)
+        return super().compute_primitives_cv(U, call_timer=call_timer)
 
-    def convert_solution(self, W=False):
+    def convert_solution(self, W=False, call_timer: bool = True):
         # With a primary, the solution state (and its well-balanced
         # perturbation/full bookkeeping) is owned by the primary scheme, so
         # delegate.  The inherited FV conversion assumes ``U_cv`` is the
         # perturbation, which is not the case after the SDFB update restores
         # the full state, and would otherwise add the equilibrium twice.
         if self.primary is not None:
-            return self.primary.convert_solution(W=W)
-        return super().convert_solution(W=W)
+            return self.primary.convert_solution(W=W, call_timer=call_timer)
+        return super().convert_solution(W=W, call_timer=call_timer)
 
     def get_solution(self, ader=False):
         if self.primary is not None:
@@ -426,11 +432,13 @@ class FallbackScheme(FV_Scheme):
         self.primary.switch_to_finite_volume(U_sp=U)
         self.working_arrays()
         self.store_high_order_fluxes(0, ader=ader)
-        self.compute_corrected_fluxes(self.dt)
+        with self._time("mood_loop"):
+            self.compute_corrected_fluxes(self.dt)
         # Compute dU/dt in FV layout, then reshape to primary (SD) layout
-        dUdt_fv = self.compute_dudt(self.U_cv)
+        with self._time("compute_dudt"):
+            dUdt_fv = self.compute_dudt(self.U_cv)
         dUdt_sd = self.primary.transpose_to_sd(dUdt_fv)
-        dUdt_sd = self.primary.compute_sp_from_cv(dUdt_sd)
+        dUdt_sd = self.primary.compute_sp_from_cv(dUdt_sd, timer_cat="transpose")
         self.primary.switch_to_high_order(update_solution_points=False)
         self.working_arrays()
         return dUdt_sd

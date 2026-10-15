@@ -209,14 +209,14 @@ def detect_troubles(self: Simulator):
     # call, so reuse it instead of recomputing the primitives.
     # W_old -> s.dm.M
     self.fill_active_region(self.W_cv)
-    W_new = self.compute_primitives_cv(self.dm.U_new)    
+    W_new = self.compute_primitives_cv(self.dm.U_new, call_timer=False)
     ##############################################
     # NAD Check for numerically adimissible values
     ##############################################
     # First check if DMP criteria is met, if it is we can avoid computing alpha
     # The NAD/SED pipeline only feeds the trouble flag through the limiting
     # variables, so restrict the (expensive) neighborhood work to those rows.
-    self.Boundaries(self.dm.M)
+    self.Boundaries(self.dm.M, call_timer=False)
     W_max, W_min = neighborhood_extrema(
         self.dm.M[lv], self.ndim, getattr(self, "NAD_neighbors", "1st")
     )
@@ -232,7 +232,7 @@ def detect_troubles(self: Simulator):
     alpha = None
     if self.p > 1 and self.SED:
         self.fill_active_region(W_new)
-        self.Boundaries(self.dm.M)
+        self.Boundaries(self.dm.M, call_timer=False)
         M_lv = self.dm.M[lv]
         alpha = W_new_lv*0 + 1
         for dim in self.dims:
@@ -252,7 +252,7 @@ def detect_troubles(self: Simulator):
     ###########################
     if self.PAD:
         if self.WB:
-            W_new += self.compute_primitives(self.dm.U_eq_cv)
+            W_new += self.compute_primitives(self.dm.U_eq_cv, call_timer=False)
         self.dm.troubles = pad_check(
             self.dm.troubles,
             W_new[self._d_, ...], W_new[self._p_, ...],
@@ -262,7 +262,7 @@ def detect_troubles(self: Simulator):
     #self.n_troubles += self.dm.troubles.sum()
     self.dm.M[...] = 0
     self.fill_active_region(self.dm.troubles)
-    self.Boundaries_scalar(self.dm.M)
+    self.Boundaries_scalar(self.dm.M, call_timer=False)
     trouble = self.dm.M[0]
     self.dm.theta[0][...] = trouble
     theta = self.dm.theta[0]
