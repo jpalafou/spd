@@ -527,7 +527,7 @@ class Simulator:
         self.init_sim()
         while self.time < t_end:
             if not self.n_step % 100 and self.rank == 0 and self.verbose:
-                print(f"Time step #{self.n_step} (t = {np.round(self.time,3)})", end="\r")
+                print(f"Time step #{self.n_step} (t = {np.round(self.time,3)})", end="\r", flush=True)
             with self._time("take_step"):
                 with self._time("compute_dt"):
                     self.compute_dt()
