@@ -76,10 +76,11 @@ class FallbackScheme(FV_Scheme):
         DMP stencil for the NAD bounds: '1st' (von Neumann / face neighbors)
         or '2nd' (Moore / box neighborhood, includes diagonal neighbors).
     NAD_cfl : bool
-        Scale either NAD tolerance by min(1, c_max * dt / h), using
-        c_max = max(ndim * c_s + sum(abs(v_d))) over the domain, the
-        candidate-update timestep (dt * w_tp[i] for ADER), and each cell's
-        maximum directional width. Default is False. Not implemented for WB=True.
+        Scale either NAD tolerance by min(1, v_max * dt / h), where
+        v_max = max(abs(vx), abs(vy), abs(vz)) + c_s is evaluated in each
+        cell. Uses the candidate-update timestep (dt * w_tp[i] for ADER) and
+        each cell's maximum directional width. Default is False. Not
+        implemented for WB=True.
     PAD : bool
         Enable physically admissible detection.
     blending : bool

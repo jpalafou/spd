@@ -243,19 +243,18 @@ def detect_troubles(self: Simulator, dt):
 
     tolerance = self.tolerance if self.p > 0 else 0.0
     if self.NAD_cfl and self.p > 0:
-        # Match compute_dt's characteristic speed using the pre-update state.
         W = self.W_cv
-        c = self.ndim * self.equations.compute_cs(
+        speed = np.abs(W[self.vels[0]])
+        for vel in self.vels[1:]:
+            speed = np.maximum(speed, np.abs(W[vel]))
+        speed += self.equations.compute_cs(
             W[self._p_], W[self._d_], self.gamma, self.min_c2
         )
-        for vel in self.vels[: self.ndim]:
-            c += np.abs(W[vel])
-        c_max = self.comms.reduce_max(np.max(c).item())
         # The largest local width gives the tightest NAD tolerance.
         h = 0.0
         for dim, idim in self.dims.items():
             h = np.maximum(h, self.h_fp[dim][cut(ngh, -ngh, idim)])
-        tolerance = tolerance * np.minimum(1.0, c_max * dt / h)
+        tolerance = tolerance * np.minimum(1.0, speed * dt / h)
     possible_trouble = nad_check(
         W_new_lv, W_min, W_max, alpha, tolerance, self.NAD == "delta"
     )

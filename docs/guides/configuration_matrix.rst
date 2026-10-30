@@ -30,11 +30,10 @@ Key constructor knobs
 - ``N``, ``p``, ``m``: mesh and order controls.
 - ``BC``: per-dimension boundary-condition tuples.
 - ``NAD_cfl=True`` on ``SPD_Simulator``: multiply the tolerance for either
-  ``NAD=""`` or ``NAD="delta"`` by ``min(1, c_max * dt / h)``. Disabled
-  by default. As in ``compute_dt``, the characteristic speed is the domain
-  maximum of ``ndim * c_s + sum(abs(v_d))`` over active directions.
-  ``h`` is each cell's maximum physical width over active directions,
-  and ``dt`` is the candidate
+  ``NAD=""`` or ``NAD="delta"`` by ``min(1, v_max * dt / h)``. Disabled
+  by default. The speed is evaluated in each cell as
+  ``v_max = max(abs(vx), abs(vy), abs(vz)) + c_s``. ``h`` is each cell's
+  maximum physical width over active directions, and ``dt`` is the candidate
   update's timestep (``dt * w_tp[i]`` for each ADER contribution).
   Enabling this option with ``WB=True`` raises ``NotImplementedError``.
 

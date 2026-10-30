@@ -1,4 +1,4 @@
-"""CFL-scaled NAD tolerances follow the candidate update, including ADER weights."""
+"""Locally scaled NAD tolerances follow the candidate update and ADER weights."""
 
 import numpy as np
 import pytest
@@ -8,7 +8,7 @@ from spd.sdfb_simulator import SPD_Simulator
 
 
 def uniform_flow(mesh, var):
-    # The inactive z velocity must not contribute to the characteristic speed.
+    # All three velocity components contribute, including inactive directions.
     return np.full_like(mesh[0], [1.0, -0.5, 0.25, 10.0, 1.0][var])
 
 
@@ -36,7 +36,7 @@ def test_nad_cfl_candidate_tolerance(
     ]
     h = widths[0] if sim.ndim == 1 else np.maximum(widths[0][None, :], widths[1][:, None])
     h = h[None, ...]
-    speed = sim.ndim * np.sqrt(1.4) + sum([0.5, 0.25][:sim.ndim])
+    speed = 10.0 + np.sqrt(1.4)
     dt = (0.2 if courant is None else courant) * h.min() / speed
     sim.dt = sim.ho_scheme.dt = sim.lo_scheme.dt = dt
     sim.init_sim()

@@ -38,10 +38,10 @@ class SPD_Simulator(Simulator):
         DMP stencil for the NAD bounds: '1st' (von Neumann / face neighbors)
         or '2nd' (Moore / box neighborhood, includes diagonal neighbors).
     NAD_cfl : bool
-        Scale either NAD tolerance by min(1, c_max * dt / h), using
-        the compute_dt characteristic speed, candidate-update timestep,
-        and each cell's maximum directional width. Default is False.
-        Not implemented for WB=True.
+        Scale either NAD tolerance by min(1, v_max * dt / h), where
+        v_max = max(abs(vx), abs(vy), abs(vz)) + c_s is evaluated in each
+        cell. Uses the candidate-update timestep and each cell's maximum
+        directional width. Default is False. Not implemented for WB=True.
     PAD : bool
         Enable physically admissible detection.
     blending : bool
