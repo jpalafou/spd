@@ -1,6 +1,6 @@
 """Layout adapter for SuperFV's second-order diffusion fluxes."""
 
-from superfv.finite_volume_driver import add_viscuous_fluxes
+from superfv.hydro_driver import add_viscuous_fluxes
 
 from spd.riemann_solvers.superfv_adapter import _variable_index_map
 
