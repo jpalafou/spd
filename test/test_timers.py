@@ -66,3 +66,15 @@ def test_cuda_sync_and_profile_gating(monkeypatch, profile):
         raise RuntimeError("interrupted step")
     assert not sim.timer["take_step"].is_timing
     assert synchronize.call_count == 2 * (calls + 1)
+
+
+def test_output_round_trips_trouble_counts(tmp_path):
+    sim = SPD_Simulator(
+        N=(2,), p=1, time_integrator="rk3", use_cupy=False,
+        scheme="SDFB", verbose=False, folder=str(tmp_path),
+    )
+    sim.trouble_counts = [1, 2, 3]
+    sim.output()
+    sim.trouble_counts = []
+    sim.load_output()
+    assert sim.trouble_counts == [1, 2, 3]

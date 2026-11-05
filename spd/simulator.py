@@ -573,6 +573,7 @@ class Simulator:
         self.outputs.append([self.time, self.noutput])
         if self.rank == 0:
             np.savetxt(folder + "/outputs.out", self.outputs)
+            np.save(folder + "/trouble_counts.npy", self.trouble_counts)
         self.noutput += 1
 
     def load_output(self):
@@ -580,6 +581,7 @@ class Simulator:
         outputs = np.loadtxt(folder + "/outputs.out")
         rows = int(outputs.size // 2)
         self.outputs = list(outputs.reshape([rows, 2]))
+        self.trouble_counts = np.load(folder + "/trouble_counts.npy").tolist()
         self.time, self.noutput = self.outputs[-1]
         self.noutput = int(self.noutput)
         file = f"{folder}/Output_{str(self.noutput).zfill(5)}"
