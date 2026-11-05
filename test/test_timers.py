@@ -24,6 +24,8 @@ def test_rk_timers_and_numerical_equivalence(fallback, viscosity):
         sim.perform_iterations(2)
         results.append(sim.dm.U_cv.copy())
         assert len(sim.trouble_counts) == 6 * fallback
+        assert len(sim.step_times) == 2
+        assert sim.step_times[-1] == sim.time
         # Reference counts from two RK3 steps on jonathan, including cleanup.
         expected = dict(
             take_step=2, compute_dt=2, update_unew=2, f=6, compute_dudt=6,
@@ -68,13 +70,16 @@ def test_cuda_sync_and_profile_gating(monkeypatch, profile):
     assert synchronize.call_count == 2 * (calls + 1)
 
 
-def test_output_round_trips_trouble_counts(tmp_path):
+def test_output_round_trips_histories(tmp_path):
     sim = SPD_Simulator(
         N=(2,), p=1, time_integrator="rk3", use_cupy=False,
         scheme="SDFB", verbose=False, folder=str(tmp_path),
     )
     sim.trouble_counts = [1, 2, 3]
+    sim.step_times = [0.1]
     sim.output()
     sim.trouble_counts = []
+    sim.step_times = []
     sim.load_output()
     assert sim.trouble_counts == [1, 2, 3]
+    assert sim.step_times == [0.1]

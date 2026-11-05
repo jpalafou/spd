@@ -161,6 +161,7 @@ class Simulator:
         # dm is now owned by the scheme; see the dm property below.
         self.outputs = []
         self.trouble_counts = []
+        self.step_times = []
         self.available_time = available_time
 
         self.nghx = Nghc
@@ -512,6 +513,7 @@ class Simulator:
         self.integrator.update(self.scheme)
         self.scheme.post_update()
         self.time += self.dt
+        self.step_times.append(self.time)
         return True
 
     def perform_iterations(self, n_step: int) -> None:
@@ -574,6 +576,7 @@ class Simulator:
         if self.rank == 0:
             np.savetxt(folder + "/outputs.out", self.outputs)
             np.save(folder + "/trouble_counts.npy", self.trouble_counts)
+            np.save(folder + "/step_times.npy", self.step_times)
         self.noutput += 1
 
     def load_output(self):
@@ -582,6 +585,7 @@ class Simulator:
         rows = int(outputs.size // 2)
         self.outputs = list(outputs.reshape([rows, 2]))
         self.trouble_counts = np.load(folder + "/trouble_counts.npy").tolist()
+        self.step_times = np.load(folder + "/step_times.npy").tolist()
         self.time, self.noutput = self.outputs[-1]
         self.noutput = int(self.noutput)
         file = f"{folder}/Output_{str(self.noutput).zfill(5)}"

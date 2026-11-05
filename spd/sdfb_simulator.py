@@ -243,6 +243,7 @@ class SPD_Simulator(Simulator):
             U_full = self.dm.U_cv + self.dm.U_eq_cv
         self.compute_primitives(U_full, W=self.dm.W_cv)
         self.time += self.dt
+        self.step_times.append(self.time)
         return True
 
     # ------------------------------------------------------------------
