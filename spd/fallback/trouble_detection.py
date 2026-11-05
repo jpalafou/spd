@@ -273,7 +273,8 @@ def detect_troubles(self: Simulator, dt):
             self.min_rho, self.max_rho, self.min_P,
         )
 
-    #self.n_troubles += self.dm.troubles.sum()
+    n_troubles = int(self.dm.troubles.sum().item())
+    self._sim.trouble_counts.append(self.comms.reduce_sum(n_troubles))
     self.dm.M[...] = 0
     self.fill_active_region(self.dm.troubles)
     self.Boundaries_scalar(self.dm.M, call_timer=False)

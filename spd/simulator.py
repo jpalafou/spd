@@ -160,6 +160,7 @@ class Simulator:
         self.use_cupy = use_cupy
         # dm is now owned by the scheme; see the dm property below.
         self.outputs = []
+        self.trouble_counts = []
         self.available_time = available_time
 
         self.nghx = Nghc

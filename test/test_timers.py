@@ -23,6 +23,7 @@ def test_rk_timers_and_numerical_equivalence(fallback, viscosity):
         )
         sim.perform_iterations(2)
         results.append(sim.dm.U_cv.copy())
+        assert len(sim.trouble_counts) == 6 * fallback
         # Reference counts from two RK3 steps on jonathan, including cleanup.
         expected = dict(
             take_step=2, compute_dt=2, update_unew=2, f=6, compute_dudt=6,
