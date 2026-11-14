@@ -113,6 +113,8 @@ class RK_Integrator(Integrator):
             and dt attribute.
         """
         dt = target.dt
+        sim = getattr(target, "_sim", target)
+        t = sim.time
         with target._time("update_unew"):
             for stage in range(self.nstages):
                 # Skip zero Butcher entries (exact no-ops).
@@ -125,9 +127,10 @@ class RK_Integrator(Integrator):
                 # Compute dUdt at the current stage
                 Ks = target.dm.__getattribute__(f"K_{stage}")
                 with target._time("f"):
-                    Ks[...] = target.compute_update(
-                        target.dm.U_stage, ader=False, c_l=self.c[stage], dt=dt
-                    )
+                    # All nested schemes share the simulator's boundary time.
+                    sim.time = t + self.c[stage] * dt
+                    Ks[...] = target.compute_update(target.dm.U_stage, ader=False, c_l=self.c[stage], dt=dt)
+                    sim.time = t
             terms = [
                 (target.dm.__getattribute__(f"K_{stage}"), dt * self.b[stage])
                 for stage in range(self.nstages)
