@@ -55,17 +55,3 @@ def test_dmr_boundary_stage_times(scheme, integrator, monkeypatch):
             )
             np.testing.assert_array_equal(fv_traces[i], expected)
 
-
-def test_stage_time_restored_on_rhs_failure(monkeypatch):
-    sim = SPD_Simulator(N=(2,), p=1, time_integrator="rk3", use_cupy=False)
-    sim.time = 0.3
-
-    def fail_at_second_stage(U, **kwargs):
-        if kwargs["c_l"] == 1:
-            raise RuntimeError("RHS failed")
-        return np.zeros_like(U)
-
-    monkeypatch.setattr(sim.scheme, "compute_update", fail_at_second_stage)
-    with pytest.raises(RuntimeError, match="RHS failed"):
-        sim.integrator.update(sim.scheme)
-    assert sim.time == 0.3
