@@ -458,27 +458,7 @@ class SD_Scheme(SemiDiscreteScheme):
     # ----------------------------------------------------------------
 
     def compute_dt(self) -> None:
-        W = self.dm.W_cv
-        c_s = self.equations.compute_cs(
-            W[self._p_], W[self._d_], self.gamma, self.min_c2
-        )
-        c = c_s * self.ndim
-        for vel in self.vels[: self.ndim]:
-            c += np.abs(W[vel])
-        c_max = np.max(c)
-        h = self.h_min / (self.p + 1)
-        dt = h / c_max
-        dt = self.comms.reduce_min(dt).item()
-        diffusivity = max(
-            self.nu * max(1., 2. - self.beta) if self.viscosity else 0.,
-            (self.gamma - 1.) * self.chi if self.thdiffusion else 0.,
-        )
-        if diffusivity > 0:
-            # Physical FV subcells are nonuniform within each SD element.
-            h_min = min(width.min().item() for width in self.h_fp.values())
-            dt = min(dt, h_min**2 / (2 * self.ndim * diffusivity))
-        self.dt = self.cfl_coeff * dt
-        self._sim.dt = self.dt
+        self._compute_hydro_dt(self.dm.W_cv)
 
     # ----------------------------------------------------------------
     # Spatial operator: flux computation and RHS

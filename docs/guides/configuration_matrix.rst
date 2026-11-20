@@ -37,6 +37,34 @@ Key constructor knobs
   update's timestep (``dt * w_tp[i]`` for each ADER contribution).
   Enabling this option with ``WB=True`` raises ``NotImplementedError``.
 
+Advection and diffusion numbers
+------------------------------
+
+Both numbers use the directional average subcell width ``h_ave``: element width
+divided by ``p + 1`` for SD, or cell width for pure FV, including with fallback.
+For the one-dimensional scalar advection-diffusion stability analysis,
+``C = abs(a) * dt / h_ave`` and ``D = nu * dt / h_ave**2``.
+
+In hydrodynamics, the advective speed is ``abs(v) + c_s``. Multiple dimensions
+use ``C = dt * max(sum((abs(v_d) + c_s) / h_ave_d))`` and
+``D = diffusivity * dt * sum(1 / h_ave_d**2)`` over active directions.
+The diffusion coefficient is ``nu`` for viscosity and passive transport, or
+``(gamma - 1) * chi`` for thermal diffusion; the largest active coefficient
+controls the diffusion bound.
+
+``cfl_coeff`` limits C and ``cfl_diffusion`` independently limits D, matching
+SuperFV's ``CFL`` and ``CFL_diffusion`` arguments. They default to ``0.8`` and
+``0.2``. The timestep satisfies both bounds and may be clipped to reach a target
+time, so the achieved numbers can be smaller than the requested limits.
+The stable C and D depend on the spatial scheme, degree, physics, and integrator;
+the defaults do not encode the degree-dependent SD stability boundaries.
+
+Previously, SD with fallback normalized ``cfl_coeff`` by the smallest subcell
+width. To retain the same inviscid timestep, multiply an old coefficient by
+``h_smallest / h_ave``. For ``p=7``, an old value of ``2.4`` becomes approximately
+``0.489`` on an isotropic mesh. Diffusion is now controlled by ``cfl_diffusion``
+in average-width units, rather than by ``cfl_coeff`` and a smallest-width cap.
+
 Operational note
 ----------------
 

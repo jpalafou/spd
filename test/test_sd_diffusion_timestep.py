@@ -1,4 +1,4 @@
-"""Check the smallest-subcell timestep against periodic SD diffusion."""
+"""Check average-subcell diffusion numbers against periodic SD diffusion."""
 
 from math import factorial
 
@@ -39,7 +39,7 @@ def test_diffusion_amplification(diffusion_spectrum, ndim, integrator):
     p, eigenvalues = diffusion_spectrum
     sim = SD_Simulator(
         N=(2,) * ndim, p=p, time_integrator=integrator, init_fct=constant,
-        viscosity=True, nu=1., cfl_coeff=0.8, use_cupy=False,
+        viscosity=True, nu=1., cfl_coeff=0.8, cfl_diffusion=0.005, use_cupy=False,
     )
     rates = np.array([0.])
     for d in sim.dims:
@@ -51,13 +51,18 @@ def test_diffusion_amplification(diffusion_spectrum, ndim, integrator):
 
 
 @pytest.mark.parametrize("chi", [0., 100.])
-def test_smallest_physical_subcell(diffusion_spectrum, chi):
+@pytest.mark.parametrize("cfl_coeff", [0.2, 0.8])
+@pytest.mark.parametrize("cfl_diffusion", [0.005, 0.01])
+def test_diffusion_number_uses_average_subcells(
+    diffusion_spectrum, chi, cfl_coeff, cfl_diffusion,
+):
     p, _ = diffusion_spectrum
     sim = SD_Simulator(
         N=(3, 2), xlim=(0, 2), p=p, time_integrator="rk3", init_fct=constant,
         viscosity=True, nu=1., thdiffusion=chi > 0, chi=chi, use_cupy=False,
+        cfl_coeff=cfl_coeff, cfl_diffusion=cfl_diffusion,
     )
-    h_min = min(np.min(np.diff(sim.fp[d])) * sim.h[d] for d in sim.dims)
-    diffusivity = max(4 / 3, (sim.gamma - 1) * chi)
-    expected = sim.cfl_coeff * h_min**2 / (2 * sim.ndim * diffusivity)
+    diffusivity = max(sim.nu, (sim.gamma - 1) * chi)
+    inverse_h2 = sum((sim.h[d] / (p + 1))**-2 for d in sim.dims)
+    expected = cfl_diffusion / (diffusivity * inverse_h2)
     assert sim.dt == pytest.approx(expected)

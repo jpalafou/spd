@@ -17,7 +17,7 @@ def test_fv_cfl_independent_of_sd_degree(p):
         time_integrator="rk2", cfl_coeff=0.6, use_cupy=False,
     )
     sim.compute_dt()
-    expected = 0.6 * 0.25 / (2 * np.sqrt(1.4) + 0.75)
+    expected = 0.6 / (4 * (np.sqrt(1.4) + 0.5) + 3 * (np.sqrt(1.4) + 0.25))
     assert sim.dt == pytest.approx(expected)
 
 

@@ -85,6 +85,27 @@ class SemiDiscreteScheme:
         """Compute and store the CFL-limited time step in self.dt."""
         raise NotImplementedError
 
+    def _compute_hydro_dt(self, W):
+        """Limit C and D independently using directional average subcell widths."""
+        cs = self.equations.compute_cs(
+            W[self._p_], W[self._d_], self.gamma, self.min_c2
+        )
+        advection_rate = np.zeros_like(cs)
+        inverse_h2 = 0.0
+        for dim, idim in self.dims.items():
+            h_ave = self.h[dim] / self.n[dim]
+            advection_rate += (np.abs(W[self.vels[idim]]) + cs) / h_ave
+            inverse_h2 += 1.0 / h_ave**2
+        dt = self.cfl_coeff / np.max(advection_rate)
+        diffusivity = max(
+            self.nu if self.viscosity else 0.0,
+            (self.gamma - 1.0) * self.chi if self.thdiffusion else 0.0,
+        )
+        if diffusivity > 0:
+            dt = min(dt, self.cfl_diffusion / (diffusivity * inverse_h2))
+        self.dt = float(self.comms.reduce_min(dt))
+        self._sim.dt = self.dt
+
     def get_solution(self, ader=False):
         """Return the current solution array."""
         raise NotImplementedError

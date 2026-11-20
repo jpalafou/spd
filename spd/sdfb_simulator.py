@@ -186,11 +186,6 @@ class SPD_Simulator(Simulator):
         self.lo_scheme.initialize()
 
         self.create_dicts()
-        if isinstance(self.scheme, FallbackScheme):
-            # The static fallback mesh uses the SD flux-point subcells.
-            self.lo_scheme.h_min = min(
-                h.min().item() for h in self.lo_scheme.h_fp.values()
-            )
 
     def compute_dt(self) -> None:
         """Respect both the high-order and fallback timestep bounds."""

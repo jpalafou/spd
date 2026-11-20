@@ -696,21 +696,7 @@ class FV_Scheme(SemiDiscreteScheme):
     # ----------------------------------------------------------------
 
     def compute_dt(self) -> None:
-        W = self.W_cv
-        c_s = self.equations.compute_cs(
-            W[self._p_], W[self._d_], self.gamma, self.min_c2
-        )
-        c = c_s * self.ndim
-        for vel in self.vels[: self.ndim]:
-            c += np.abs(W[vel])
-        c_max = np.max(c)
-        h = self.h_min
-        dt = h / c_max
-        dt = self.comms.reduce_min(dt).item()
-        if self.viscosity and self.nu > 0:
-            dt = min(dt, h**2 / self.nu * 0.25)
-        self.dt = self.cfl_coeff * dt
-        self._sim.dt = self.dt
+        self._compute_hydro_dt(self.W_cv)
 
     # ----------------------------------------------------------------
     # Boundary handling

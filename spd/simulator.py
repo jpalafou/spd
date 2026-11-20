@@ -38,6 +38,13 @@ class Simulator:
         the legacy "init" path and uses this scheme directly.
         When *None* (default / backward compat) subclasses create
         the scheme themselves.
+    cfl_coeff : float
+        Hydrodynamic advection-number limit C, using average subcell widths.
+        In one dimension, C = (abs(v) + c_s) * dt / h_ave.
+    cfl_diffusion : float
+        Hydrodynamic diffusion-number limit D, independent of ``cfl_coeff``.
+        In one dimension, D = diffusivity * dt / h_ave**2. In multiple
+        dimensions, C and D sum the directional contributions.
     profile : bool
         Enable detailed timers. ``take_step`` is always timed. Timer boundaries
         synchronize CUDA when ``use_cupy=True``.
@@ -80,6 +87,7 @@ class Simulator:
         available_time=3600.0,
         init: bool = True,
         folder: str = "outputs/",
+        cfl_diffusion: float = 0.2,
     ):
         self.folder = folder
         self.init = init
@@ -148,6 +156,7 @@ class Simulator:
         self.nu = nu
         self.chi = chi
         self.cfl_coeff = cfl_coeff
+        self.cfl_diffusion = cfl_diffusion
         self.min_c2 = min_c2
         self.viscosity = viscosity
         self.thdiffusion = thdiffusion
