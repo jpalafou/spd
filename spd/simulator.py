@@ -505,6 +505,10 @@ class Simulator:
         #print(self.cost_per_step,self.domain_size, self.domain_size/self.cost_per_step)
         return self.domain_size/self.cost_per_step
 
+    def _set_dt(self, dt):
+        """Synchronize the timestep used by the simulator and its scheme."""
+        self.dt = self.scheme.dt = dt
+
     def perform_update(self) -> bool:
         """
         Perform a single time step: integrator advances the scheme.
@@ -538,8 +542,7 @@ class Simulator:
                 if self.time + self.dt >= t_end:
                     dt = t_end - self.time
                     if dt > 1e-14:
-                        self.dt = dt
-                        self.scheme.dt = dt
+                        self._set_dt(dt)
                     else:
                         print(f"dt={dt}")
                         break

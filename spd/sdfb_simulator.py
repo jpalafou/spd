@@ -200,7 +200,11 @@ class SPD_Simulator(Simulator):
             self.lo_scheme.working_arrays()
             self.lo_scheme.compute_dt()
             dt = min(dt, self.lo_scheme.dt)
-        self.dt = self.ho_scheme.dt = self.lo_scheme.dt = dt
+        self._set_dt(dt)
+
+    def _set_dt(self, dt):
+        super()._set_dt(dt)
+        self.ho_scheme.dt = self.lo_scheme.dt = dt
 
     # ------------------------------------------------------------------
     # Dict creation
