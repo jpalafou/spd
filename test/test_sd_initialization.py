@@ -19,8 +19,10 @@ def test_dmr_initial_state_and_zero_timestep(p, scheme):
     initial = sim.dm.U_cv.copy()
     projected = sim.compute_cv_from_sp(sim.dm.U_sp)
     np.testing.assert_allclose(projected, initial, atol=1e-12, rtol=1e-12)
+    assert np.all(sim.dm.W_cv[0] > 0.)
+    assert np.all(sim.dm.W_cv[4] > 0.)
     np.testing.assert_allclose(
-        sim.compute_cv_from_sp(sim.dm.W_sp), sim.dm.W_cv, atol=1e-12, rtol=1e-12,
+        sim.compute_primitives(initial), sim.dm.W_cv, atol=1e-12, rtol=1e-12,
     )
 
     sim.dt = sim.ho_scheme.dt = sim.lo_scheme.dt = 0.
@@ -49,3 +51,8 @@ def test_linear_velocity_energy_averages(p):
     centers = 0.5 * (faces[:-1] + faces[1:])
     expected = internal + 0.5 * centers**2 + np.diff(faces)**2 / 24
     np.testing.assert_allclose(sim.dm.U_cv[4].ravel(), expected, atol=1e-12, rtol=1e-12)
+    np.testing.assert_allclose(
+        sim.dm.W_cv[4].ravel(),
+        1 + (sim.gamma - 1) * np.diff(faces)**2 / 24,
+        atol=1e-12, rtol=1e-12,
+    )

@@ -205,20 +205,20 @@ class SD_Scheme(SemiDiscreteScheme):
         return mesh
 
     def post_init(self) -> None:
-        nvar = self.nvar
-        ngh = self.Nghe
-        # This arrays contain Nghe layers of ghost elements
-        W_gh = self.array_sp(ngh=ngh)
-        for var in range(nvar):
-            W_gh[var][...] = quadrature_mean(self.mesh_cv, self.init_fct, self.ndim, self.p, var)
+        def conservative_ic(mesh, var):
+            W = np.stack([self.init_fct(mesh, v) for v in range(self.nvar)])
+            return self.compute_conservatives(W, call_timer=False)
 
-        self.W_gh = W_gh
-        self.W_init_cv = self.active_region(W_gh)
+        # Convert the analytic IC pointwise before averaging over each CV.
+        U_gh = quadrature_mean(
+            self.mesh_cv, conservative_ic, self.ndim, self.p, 0
+        )
+        self.dm.U_cv = self.active_region(U_gh).copy()
+        self.dm.U_sp = self.compute_sp_from_cv(self.dm.U_cv, call_timer=False)
+        self.W_gh = self.compute_primitives(U_gh, call_timer=False)
+        self.W_init_cv = self.active_region(self.W_gh)
         self.dm.W_cv = self.W_init_cv.copy()
-        # Convert pointwise, then average the conservative polynomial.
-        self.dm.W_sp = self.compute_sp_from_cv(self.dm.W_cv, call_timer=False)
-        self.dm.U_sp = self.compute_conservatives(self.dm.W_sp, call_timer=False)
-        self.dm.U_cv = self.compute_cv_from_sp(self.dm.U_sp, call_timer=False)
+        self.dm.W_sp = self.compute_primitives(self.dm.U_sp, call_timer=False)
 
     def init_Boundaries(self) -> None:
         ndim = self.ndim
