@@ -90,7 +90,7 @@ class FallbackScheme(FV_Scheme):
     godunov : bool
         If True, use pure Godunov (no blending, theta=1 everywhere).
     limiting_variables : list
-        Variable indices used for NAD check (default: density and pressure).
+        Variable indices used for NAD check (default: all hydro variables and passives).
     """
 
     def __init__(
@@ -98,7 +98,7 @@ class FallbackScheme(FV_Scheme):
         sim,
         primary=None,
         riemann_solver="llf",
-        slope_limiter="minmod",
+        slope_limiter="moncen",
         scheme="MUSCL",
         FB=False,
         tolerance=1e-5,
@@ -106,10 +106,10 @@ class FallbackScheme(FV_Scheme):
         NAD="",
         NAD_neighbors="2nd",
         PAD=True,
-        blending=True,
-        min_rho=1e-10,
-        max_rho=1e10,
-        min_P=1e-10,
+        blending=False,
+        min_rho=1e-12,
+        max_rho=np.inf,
+        min_P=1e-12,
         godunov=False,
         limiting_variables=None,
         NAD_cfl=False,
@@ -137,11 +137,11 @@ class FallbackScheme(FV_Scheme):
         self.max_rho = max_rho
         self.min_P = min_P
         self.godunov = godunov
-        # Default: check density and pressure.
+        # Check all evolved fields; temperature is a derived work variable.
         self.limiting_variables = (
             limiting_variables
             if limiting_variables is not None
-            else [self._d_, self._p_]
+            else [i for i in range(self.nvar) if i != self._t_]
         )
         if self.primary is not None:
             self.ader = False

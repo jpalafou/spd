@@ -51,7 +51,7 @@ class SPD_Simulator(Simulator):
     godunov : bool
         Use pure Godunov (no blending).
     limiting_variables : list
-        Variable indices for NAD (default: density and pressure).
+        Variable indices for NAD (default: all hydro variables and passives).
     predictor : bool
         Use MUSCL-Hancock for fallback.
     riemann_solver_sd, riemann_solver_fv : str
@@ -72,16 +72,16 @@ class SPD_Simulator(Simulator):
         NAD: str = "",
         NAD_neighbors: str = "2nd",
         PAD: bool = True,
-        blending: bool = True,
-        min_rho: float = 1e-10,
-        max_rho: float = 1e10,
-        min_P: float = 1e-10,
+        blending: bool = False,
+        min_rho: float = 1e-12,
+        max_rho: float = np.inf,
+        min_P: float = 1e-12,
         godunov: bool = False,
         limiting_variables: list = None,
         predictor: bool = False,
         riemann_solver_sd: str = "hllc",
         riemann_solver_fv: str = "hllc",
-        slope_limiter: str = "minmod",
+        slope_limiter: str = "moncen",
         ho_scheme_cls=None,
         superfv_viscosity: bool = False,
         NAD_cfl: bool = False,

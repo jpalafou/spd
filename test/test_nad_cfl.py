@@ -28,7 +28,7 @@ def test_nad_cfl_candidate_tolerance(
     sim = SPD_Simulator(
         init_fct=uniform_flow, N=N, xlim=(0, 2), p=3,
         time_integrator=integrator, NAD=nad, tolerance=0.01,
-        SED=False, use_cupy=use_cupy,
+        SED=False, limiting_variables=[0, 4], use_cupy=use_cupy,
         **({"NAD_cfl": True} if courant is not None else {}),
     )
     widths = [
