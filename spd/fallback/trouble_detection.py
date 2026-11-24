@@ -197,6 +197,16 @@ def pad_check(troubles, rho, P, min_rho, max_rho, min_P):
     return np.where(P >= min_P, troubles, 1)
 
 
+def troubled_volume_fraction(scheme) -> float:
+    """Return the global fraction of active volume flagged before blending."""
+    troubled_volume = scheme.dm.troubles
+    for dim, idim in scheme.dims.items():
+        widths = scheme.h_fp[dim][cut(scheme.Nghc, -scheme.Nghc, idim)]
+        troubled_volume = troubled_volume * widths
+    domain_volume = np.prod(list(scheme.len.values())) * scheme.comms.size
+    return scheme.comms.reduce_sum(troubled_volume.sum().item()) / domain_volume
+
+
 def detect_troubles(self: Simulator, dt):
     if self.godunov:
         return
@@ -275,6 +285,7 @@ def detect_troubles(self: Simulator, dt):
 
     n_troubles = int(self.dm.troubles.sum().item())
     self._sim.trouble_counts.append(self.comms.reduce_sum(n_troubles))
+    self._sim._stage_limiting_fractions.append(troubled_volume_fraction(self))
     self.dm.M[...] = 0
     self.fill_active_region(self.dm.troubles)
     self.Boundaries_scalar(self.dm.M, call_timer=False)

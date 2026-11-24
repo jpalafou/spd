@@ -171,6 +171,8 @@ class Simulator:
         self.outputs = []
         self.trouble_counts = []
         self.step_times = []
+        self.limiting_fractions = []
+        self._stage_limiting_fractions = []
         self.available_time = available_time
 
         self.nghx = Nghc
@@ -518,6 +520,19 @@ class Simulator:
         """Synchronize the timestep used by the simulator and its scheme."""
         self.dt = self.scheme.dt = dt
 
+    def _log_step(self):
+        """Record the time-weighted fraction of volume flagged before blending."""
+        self.step_times.append(self.time)
+        fraction = 0.0
+        if self._stage_limiting_fractions:
+            weights = (
+                self.scheme.dm.asnumpy(self.scheme.dm.w_tp)
+                if self.ader else self.integrator.b
+            )
+            fraction = float(np.dot(weights, self._stage_limiting_fractions))
+        self.limiting_fractions.append(fraction)
+        self._stage_limiting_fractions.clear()
+
     def perform_update(self) -> bool:
         """
         Perform a single time step: integrator advances the scheme.
@@ -526,7 +541,7 @@ class Simulator:
         self.integrator.update(self.scheme)
         self.scheme.post_update()
         self.time += self.dt
-        self.step_times.append(self.time)
+        self._log_step()
         return True
 
     def perform_iterations(self, n_step: int) -> None:
@@ -543,7 +558,12 @@ class Simulator:
         self.init_sim()
         while self.time < t_end:
             if not self.n_step % 100 and self.rank == 0 and self.verbose:
-                print(f"Time step #{self.n_step} (t = {np.round(self.time,3)})", end="\r", flush=True)
+                fraction = self.limiting_fractions[-1] if self.limiting_fractions else 0.0
+                print(
+                    f"Time step #{self.n_step} (t = {np.round(self.time,3)}, "
+                    f"limiting fraction = {fraction:.3%})",
+                    end="\r", flush=True,
+                )
             with self._time("take_step"):
                 with self._time("compute_dt"):
                     self.compute_dt()
@@ -589,6 +609,7 @@ class Simulator:
             np.savetxt(folder + "/outputs.out", self.outputs)
             np.save(folder + "/trouble_counts.npy", self.trouble_counts)
             np.save(folder + "/step_times.npy", self.step_times)
+            np.save(folder + "/limiting_fractions.npy", self.limiting_fractions)
         self.noutput += 1
 
     def load_output(self):
@@ -598,6 +619,11 @@ class Simulator:
         self.outputs = list(outputs.reshape([rows, 2]))
         self.trouble_counts = np.load(folder + "/trouble_counts.npy").tolist()
         self.step_times = np.load(folder + "/step_times.npy").tolist()
+        fractions_file = folder + "/limiting_fractions.npy"
+        self.limiting_fractions = (
+            np.load(fractions_file).tolist() if os.path.exists(fractions_file)
+            else [float("nan")] * len(self.step_times)
+        )
         self.time, self.noutput = self.outputs[-1]
         self.noutput = int(self.noutput)
         file = f"{folder}/Output_{str(self.noutput).zfill(5)}"
